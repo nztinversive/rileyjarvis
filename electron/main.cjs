@@ -23,7 +23,7 @@ let normalWindowBounds = null;
 let dbWriteQueue = Promise.resolve();
 
 const RICKY_INSTRUCTIONS = `# Role and Objective
-You are Vector, Riley's desktop AI operator. You speak through realtime voice and can use local tools.
+You are Vector, Noah's desktop AI operator. You speak through realtime voice and can use local tools.
 
 # Personality and Tone
 Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, not a chatbot.
@@ -34,15 +34,15 @@ Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, 
 
 # Tool Behavior
 - Use read-only tools when the user's intent is clear.
-- When Riley says "show me the menu", "show me what I can do", or asks what Vector can do, call show_menu immediately.
+- When Noah says "show me the menu", "show me what I can do", or asks what Vector can do, call show_menu immediately.
 - For web search, notes, charts, records, image generation, and artifact display, act directly when the request is clear.
-- For repo status, project health, dirty worktree, current branch, remote drift, verification scripts, blockers, or "check <repo>", call project_cockpit_check. Prefer saved repo names like FamilyPlate, Paw Paperwork, Screenwell, TourForge, FactoryIQ, ClarityDashboard, FW Gatekeeper, Overlot, and RileyJarvis when Riley names a project.
-- For thumbnail creation/editing, always use the thumbnail board tools, never generic image_generate and never artifact_show with imageLoading. Generate exactly one 16:9 image per request. Never generate multiple unless Riley separately asks again. Every generate/edit request gets a permanent database number that never changes, like #18 then #19 then #20. Do not renumber visible grid positions. Show paginated 3x3 pages of the permanent numbers. Do not show a standalone fullscreen loading animation for thumbnails. Use Riley's wording literally: do not invent elaborate extra concepts, fake text, or extra thumbnail ideas. For edits, use the exact existing numbered/selected image as input and make only the requested change.
-- The thumbnail board persists across sessions. If Riley references thumbnail #N, trust that permanent number and call the matching thumbnail tool. Do not say you cannot see old thumbnails. Use thumbnail_grid to refresh state or change pages if needed.
+- For repo status, project health, dirty worktree, current branch, remote drift, verification scripts, blockers, or "check <repo>", call project_cockpit_check. Prefer saved repo names like FamilyPlate, Paw Paperwork, Screenwell, TourForge, FactoryIQ, ClarityDashboard, FW Gatekeeper, Overlot, and RileyJarvis when Noah names a project.
+- For thumbnail creation/editing, always use the thumbnail board tools, never generic image_generate and never artifact_show with imageLoading. Generate exactly one 16:9 image per request. Never generate multiple unless Noah separately asks again. Every generate/edit request gets a permanent database number that never changes, like #18 then #19 then #20. Do not renumber visible grid positions. Show paginated 3x3 pages of the permanent numbers. Do not show a standalone fullscreen loading animation for thumbnails. Use Noah's wording literally: do not invent elaborate extra concepts, fake text, or extra thumbnail ideas. For edits, use the exact existing numbered/selected image as input and make only the requested change.
+- The thumbnail board persists across sessions. If Noah references thumbnail #N, trust that permanent number and call the matching thumbnail tool. Do not say you cannot see old thumbnails. Use thumbnail_grid to refresh state or change pages if needed.
 - When a thumbnail finishes generating or editing, do not announce it verbally. The UI updates silently.
 - For sending messages, deleting data, buying things, account changes, sharing private information, or anything irreversible, summarize the action and ask for explicit confirmation before calling the modifying tool.
 - If a tool requires a confirmed field, set confirmed to true only after the user clearly confirms.
-- Typing text and pressing Enter/Return in computer use mode are allowed without extra approval when Riley asks you to type or send a prompt. Ask first before clicking controls or taking actions that delete, purchase, change settings, or expose private information.
+- Typing text and pressing Enter/Return in computer use mode are allowed without extra approval when Noah asks you to type or send a prompt. Ask first before clicking controls or taking actions that delete, purchase, change settings, or expose private information.
 - Explain what you are doing in one short sentence before longer tool work. Do not over-explain.
 
 # Artifacts
@@ -147,7 +147,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_reference_add",
-    description: "Add a local image file as a reference image for making thumbnails of Riley. Use when Riley gives a file path to a photo of himself.",
+    description: "Add a local image file as a reference image for making thumbnails of Noah. Use when Noah gives a file path to a photo of himself.",
     parameters: {
       type: "object",
       properties: {
@@ -161,7 +161,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_generate",
-    description: "Generate exactly one 16:9 YouTube thumbnail into Vector's persistent paginated thumbnail board. Uses Riley reference images if available. Assigns a new permanent number that never changes. Never generate multiple at once.",
+    description: "Generate exactly one 16:9 YouTube thumbnail into Vector's persistent paginated thumbnail board. Uses Noah reference images if available. Assigns a new permanent number that never changes. Never generate multiple at once.",
     parameters: {
       type: "object",
       properties: {
@@ -174,7 +174,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_edit",
-    description: "Edit one existing thumbnail by permanent thumbnail number, or edit the currently selected thumbnail if number is omitted. Use this whenever Riley says 'edit number 20' or 'edit this'. The edited result gets a new permanent number.",
+    description: "Edit one existing thumbnail by permanent thumbnail number, or edit the currently selected thumbnail if number is omitted. Use this whenever Noah says 'edit number 20' or 'edit this'. The edited result gets a new permanent number.",
     parameters: {
       type: "object",
       properties: {
@@ -188,7 +188,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_select",
-    description: "Select a permanent numbered thumbnail and show it fullscreen. Use when Riley says 'pull up number 20', 'show number 20', 'open number 20', or 'select number 20'.",
+    description: "Select a permanent numbered thumbnail and show it fullscreen. Use when Noah says 'pull up number 20', 'show number 20', 'open number 20', or 'select number 20'.",
     parameters: {
       type: "object",
       properties: {
@@ -201,7 +201,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_grid",
-    description: "Show one paginated 3x3 page of the persistent thumbnail board and return compact board state. Use to refresh state, change pages, or when Riley asks what thumbnails exist.",
+    description: "Show one paginated 3x3 page of the persistent thumbnail board and return compact board state. Use to refresh state, change pages, or when Noah asks what thumbnails exist.",
     parameters: {
       type: "object",
       properties: {
@@ -647,7 +647,7 @@ ipcMain.handle("realtime:create-token", async (event) => {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "OpenAI-Safety-Identifier": crypto.createHash("sha256").update("riley-local-ricky").digest("hex"),
+      "OpenAI-Safety-Identifier": crypto.createHash("sha256").update("noah-local-vector").digest("hex"),
     },
     body: JSON.stringify({
       session: {
@@ -1418,7 +1418,7 @@ function thumbnailRecord(image, prompt, type, size) {
 
 function thumbnailPrompt(prompt, hasReferences) {
   return [
-    hasReferences ? "Use the provided reference image(s) of Riley as the identity reference." : "",
+    hasReferences ? "Use the provided reference image(s) of Noah as the identity reference." : "",
     "Create one 16:9 YouTube thumbnail.",
     "Follow this request literally. Do not add extra concepts, fake UI, extra text, watermarks, or unrelated elements.",
     prompt,
@@ -1559,7 +1559,7 @@ Next new thumbnail number: ${summary.page.nextNumber}
 Visible permanent thumbnail numbers:
 ${imageLines}
 
-When Riley says "pull up number N", "select N", or "show N", call thumbnail_select with that permanent number. When Riley says "edit this", use thumbnail_edit with no number if a selected thumbnail number exists. When Riley says "edit number N", call thumbnail_edit with that permanent number. When he asks for older thumbnails or another page, call thumbnail_grid with the requested page. Do not claim you cannot see prior thumbnails; this board state is persistent and paginated.`;
+When Noah says "pull up number N", "select N", or "show N", call thumbnail_select with that permanent number. When Noah says "edit this", use thumbnail_edit with no number if a selected thumbnail number exists. When Noah says "edit number N", call thumbnail_edit with that permanent number. When he asks for older thumbnails or another page, call thumbnail_grid with the requested page. Do not claim you cannot see prior thumbnails; this board state is persistent and paginated.`;
 }
 
 async function thumbnailBoardArtifact(db, view) {
