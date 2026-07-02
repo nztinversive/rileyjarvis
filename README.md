@@ -1,6 +1,6 @@
-# RileyJarvis
+# Vector
 
-RileyJarvis is a local Electron desktop AI companion with realtime voice, a visual artifact panel, image generation, web search, notes, and opt-in macOS computer control.
+Vector is a local Electron desktop AI companion with realtime voice, a visual artifact panel, image generation, web search, notes, and opt-in macOS computer control.
 
 It is built with Electron, React, Vite, TypeScript, and the OpenAI Realtime API.
 
@@ -44,7 +44,7 @@ EXA_API_KEY=your_exa_api_key_here
 
 ## macOS Permissions
 
-RileyJarvis runs locally. Depending on the features you use, macOS may ask for:
+Vector runs locally. Depending on the features you use, macOS may ask for:
 
 - Microphone permission for voice conversation.
 - Accessibility permission for computer-control tools.
@@ -54,7 +54,7 @@ Computer-control tools are blocked until the app is in computer-use mode.
 
 ## Project Cockpit
 
-Project Cockpit is a read-only local repo inspector. Ask Ricky to check a saved project by name, for example:
+Project Cockpit is a read-only local repo inspector. Ask Vector to check a saved project by name, for example:
 
 ```text
 Check FamilyPlate.

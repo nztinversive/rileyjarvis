@@ -23,7 +23,7 @@ let normalWindowBounds = null;
 let dbWriteQueue = Promise.resolve();
 
 const RICKY_INSTRUCTIONS = `# Role and Objective
-You are Ricky, Riley's desktop AI operator. You speak through realtime voice and can use local tools.
+You are Vector, Riley's desktop AI operator. You speak through realtime voice and can use local tools.
 
 # Personality and Tone
 Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, not a chatbot.
@@ -34,7 +34,7 @@ Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, 
 
 # Tool Behavior
 - Use read-only tools when the user's intent is clear.
-- When Riley says "show me the menu", "show me what I can do", or asks what Ricky can do, call show_menu immediately.
+- When Riley says "show me the menu", "show me what I can do", or asks what Vector can do, call show_menu immediately.
 - For web search, notes, charts, records, image generation, and artifact display, act directly when the request is clear.
 - For repo status, project health, dirty worktree, current branch, remote drift, verification scripts, blockers, or "check <repo>", call project_cockpit_check. Prefer saved repo names like FamilyPlate, Paw Paperwork, Screenwell, TourForge, FactoryIQ, ClarityDashboard, FW Gatekeeper, Overlot, and RileyJarvis when Riley names a project.
 - For thumbnail creation/editing, always use the thumbnail board tools, never generic image_generate and never artifact_show with imageLoading. Generate exactly one 16:9 image per request. Never generate multiple unless Riley separately asks again. Every generate/edit request gets a permanent database number that never changes, like #18 then #19 then #20. Do not renumber visible grid positions. Show paginated 3x3 pages of the permanent numbers. Do not show a standalone fullscreen loading animation for thumbnails. Use Riley's wording literally: do not invent elaborate extra concepts, fake text, or extra thumbnail ideas. For edits, use the exact existing numbered/selected image as input and make only the requested change.
@@ -56,7 +56,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "set_mode",
-    description: "Switch Ricky between display mode and computer use mode.",
+    description: "Switch Vector between display mode and computer use mode.",
     parameters: {
       type: "object",
       properties: {
@@ -86,7 +86,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "show_menu",
-    description: "Show Ricky's capability menu in the artifact panel. Call this when the user asks 'show me the menu', 'show me what I can do', or asks what Ricky can do.",
+    description: "Show Vector's capability menu in the artifact panel. Call this when the user asks 'show me the menu', 'show me what I can do', or asks what Vector can do.",
     parameters: {
       type: "object",
       properties: {},
@@ -161,7 +161,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_generate",
-    description: "Generate exactly one 16:9 YouTube thumbnail into Ricky's persistent paginated thumbnail board. Uses Riley reference images if available. Assigns a new permanent number that never changes. Never generate multiple at once.",
+    description: "Generate exactly one 16:9 YouTube thumbnail into Vector's persistent paginated thumbnail board. Uses Riley reference images if available. Assigns a new permanent number that never changes. Never generate multiple at once.",
     parameters: {
       type: "object",
       properties: {
@@ -227,7 +227,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "note_add",
-    description: "Add a note to Ricky's fun local notes list.",
+    description: "Add a note to Vector's local notes list.",
     parameters: {
       type: "object",
       properties: {
@@ -490,7 +490,7 @@ function requireComputerMode() {
     return {
       ok: false,
       needsMode: "computer",
-      message: "Computer control is disabled. Ask Ricky to switch to computer use mode first.",
+      message: "Computer control is disabled. Ask Vector to switch to computer use mode first.",
     };
   }
   return null;
@@ -528,7 +528,7 @@ async function createWindow() {
     height: 760,
     minWidth: 420,
     minHeight: 520,
-    title: "Ricky",
+    title: "Vector",
     frame: false,
     transparent: true,
     backgroundColor: "#00000000",
@@ -672,7 +672,7 @@ ipcMain.handle("realtime:create-token", async (event) => {
           },
         },
         tracing: {
-          workflow_name: "Ricky Desktop Companion",
+          workflow_name: "Vector Desktop Operator",
         },
       },
     }),
@@ -704,7 +704,7 @@ ipcMain.handle("tools:execute", async (event, toolCall) => {
         ok: true,
         mode: currentMode,
         artifact: {
-          title: "Ricky Mode",
+          title: "Vector Mode",
           kind: "progress",
           content: `Mode switched to ${currentMode === "computer" ? "computer use" : "display"} mode.`,
         },
@@ -719,7 +719,7 @@ ipcMain.handle("tools:execute", async (event, toolCall) => {
       return {
         ok: true,
         artifact: {
-          title: "Ricky Menu",
+          title: "Vector Menu",
           kind: "markdown",
           content: buildMenuMarkdown(),
         },
@@ -960,7 +960,7 @@ async function webSearch(args) {
     return {
       ok: false,
       missingEnv: "EXA_API_KEY",
-      message: "EXA_API_KEY is not set. Add it to .env.local to enable Ricky's web search tool.",
+      message: "EXA_API_KEY is not set. Add it to .env.local to enable Vector's web search tool.",
     };
   }
 
@@ -997,7 +997,7 @@ async function webSearch(args) {
 function formatSearchMarkdown(query, results) {
   const cleanQuery = query.trim() || "Search";
   if (results.length === 0) {
-    return `# ${cleanQuery}\n\nNo strong web results came back for this search. Try a narrower query or ask Ricky to search a specific site.`;
+    return `# ${cleanQuery}\n\nNo strong web results came back for this search. Try a narrower query or ask Vector to search a specific site.`;
   }
 
   const sections = results.slice(0, 8).map((result, index) => {
@@ -1011,7 +1011,7 @@ function formatSearchMarkdown(query, results) {
     return `### ${index + 1}. ${title}\n\n${text || "No snippet was returned for this result."}\n\n- Source: ${source}${published}\n- ${link}`;
   });
 
-  return [`# ${cleanQuery}`, `Ricky found ${results.length} source${results.length === 1 ? "" : "s"}.`, ...sections].join(
+  return [`# ${cleanQuery}`, `Vector found ${results.length} source${results.length === 1 ? "" : "s"}.`, ...sections].join(
     "\n\n",
   );
 }
@@ -1032,13 +1032,13 @@ function hostname(url) {
 }
 
 function buildMenuMarkdown() {
-  return `# Ricky Menu
+  return `# Vector Menu
 
 Here is what you can ask me to do.
 
 ## Voice and Conversation
 
-- Talk naturally with Ricky in realtime.
+- Talk naturally with Vector in realtime.
 - Interrupt mid-response and ask follow-ups.
 - Ask unrelated questions while tools keep running.
 
@@ -1070,14 +1070,14 @@ Here is what you can ask me to do.
 
 ## Notes and Records
 
-- Add notes to Ricky's local note grid.
+- Add notes to Vector's local note grid.
 - Create, search, update, and confirm-delete local database records.
 
 ## Computer Use Mode
 
 - "Switch to computer use mode."
 - Open apps, click, type, press Enter/Return, scroll, inspect the UI, and take screen snapshots.
-- Ricky asks before risky actions like sending, deleting, buying, changing settings, or sharing private info.
+- Vector asks before risky actions like sending, deleting, buying, changing settings, or sharing private info.
 
 ## Good Starter Prompts
 
@@ -1646,7 +1646,7 @@ function normalizeMermaidDiagram(diagram, title) {
 
 function fallbackMermaidDiagram(title) {
   const safeTitle = String(title || "Chart").replace(/["<>]/g, "");
-  return `flowchart TD\n  A["${safeTitle}"] --> B["Chart request received"]\n  B --> C["Ricky will show a safe fallback if syntax fails"]`;
+  return `flowchart TD\n  A["${safeTitle}"] --> B["Chart request received"]\n  B --> C["Vector will show a safe fallback if syntax fails"]`;
 }
 
 app.whenReady().then(createWindow);
