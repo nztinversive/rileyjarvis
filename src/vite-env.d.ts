@@ -12,6 +12,7 @@ export type RickyArtifact = {
     | "image"
     | "imageLoading"
     | "thumbnailBoard"
+    | "projectCockpit"
     | "progress";
   content: string;
   language?: string;

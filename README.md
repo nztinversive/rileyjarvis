@@ -8,7 +8,8 @@ It is built with Electron, React, Vite, TypeScript, and the OpenAI Realtime API.
 
 - Realtime speech-to-speech conversation with OpenAI Realtime.
 - Animated companion face with listening, thinking, speaking, and working states.
-- Artifact panel for markdown, menus, notes, Mermaid diagrams, generated images, records, and progress.
+- Artifact panel for markdown, menus, notes, Mermaid diagrams, generated images, Project Cockpit reports, records, and progress.
+- Project Cockpit for read-only local repo status: branch, dirty files, remote drift, docs/vision hints, package scripts, verification suggestions, blockers, and next action.
 - YouTube thumbnail board with persistent numbered generations and image edits.
 - Optional Exa-powered web search.
 - Local notes and records stored at runtime under `data/`.
@@ -25,7 +26,7 @@ It is built with Electron, React, Vite, TypeScript, and the OpenAI Realtime API.
 ## Quick Start
 
 ```bash
-git clone https://github.com/rileybrown/rileyjarvis.git
+git clone https://github.com/rbrown101010/rileyjarvis.git
 cd rileyjarvis
 npm install
 cp .env.example .env.local
@@ -51,6 +52,28 @@ RileyJarvis runs locally. Depending on the features you use, macOS may ask for:
 
 Computer-control tools are blocked until the app is in computer-use mode.
 
+## Project Cockpit
+
+Project Cockpit is a read-only local repo inspector. Ask Ricky to check a saved project by name, for example:
+
+```text
+Check FamilyPlate.
+Show the repo state for Paw.
+Check this repo.
+```
+
+The report renders in the artifact panel with fixed sections:
+
+- State
+- Dirty Worktree
+- Remote Drift
+- Docs / Vision
+- Verification
+- Blockers
+- Next Action
+
+The default saved repo registry includes common local projects under `~/Documents/GitHub`, plus Screenwell under `~/Documents/Screenshot app/mobile-screenwell`. Project Cockpit does not install packages, commit, push, upload builds, or run release commands.
+
 ## Development
 
 ```bash
@@ -63,6 +86,7 @@ Other useful commands:
 
 ```bash
 npm run typecheck
+npm test
 npm run build
 npm start
 ```
@@ -85,11 +109,14 @@ Do not commit:
 - Generated images and local database files are ignored.
 - Risky computer-control actions should require explicit confirmation.
 - Typing and pressing Enter in computer-use mode are intentionally allowed without extra confirmation because they are core voice-control actions.
+- Project Cockpit only reads repository metadata and allows explicit paths under configured local project roots.
+- External artifact links open in the system browser; app window navigation is kept inside the local app.
 
 Before publishing a fork, run:
 
 ```bash
 npm run typecheck
+npm test
 npm run build
 git status --short
 ```

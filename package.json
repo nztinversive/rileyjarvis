@@ -7,6 +7,7 @@
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "start": "electron .",
     "build": "tsc --noEmit && vite build",
+    "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["electron", "openai", "realtime", "voice", "desktop-assistant", "ai-companion"],

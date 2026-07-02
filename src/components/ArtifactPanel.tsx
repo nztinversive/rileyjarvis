@@ -47,6 +47,35 @@ type ThumbnailBoardData = {
   }>;
 };
 
+type ProjectCockpitData = {
+  state?: "OK" | "WARN" | "BLOCKED" | string;
+  project?: string;
+  path?: string;
+  generatedAt?: string;
+  sections?: {
+    state?: string[];
+    dirtyWorktree?: string[];
+    remoteDrift?: string[];
+    docsVision?: string[];
+    verification?: string[];
+    blockers?: string[];
+    nextAction?: string[];
+  };
+  git?: {
+    branch?: string;
+    head?: string;
+    upstream?: string;
+    dirtyCount?: number;
+    ahead?: number;
+    behind?: number;
+  };
+  package?: {
+    manager?: string;
+    scripts?: string[];
+    verificationCommands?: string[];
+  };
+};
+
 mermaid.initialize({
   startOnLoad: false,
   theme: "dark",
@@ -174,6 +203,10 @@ function renderArtifact(artifact: RickyArtifact, mermaidState: MermaidState) {
     return <ThumbnailBoard content={artifact.content} />;
   }
 
+  if (artifact.kind === "projectCockpit") {
+    return <ProjectCockpit content={artifact.content} />;
+  }
+
   if (artifact.kind === "code") {
     return (
       <pre className="code-artifact">
@@ -256,6 +289,76 @@ function ThumbnailBoard({ content }: { content: string }) {
       )}
     </section>
   );
+}
+
+function ProjectCockpit({ content }: { content: string }) {
+  const report = parseProjectCockpit(content);
+  if (!report) return <pre className="text-artifact">{content}</pre>;
+
+  const state = report.state || "WARN";
+  const sections = report.sections || {};
+  const sectionItems = [
+    ["State", sections.state || []],
+    ["Dirty Worktree", sections.dirtyWorktree || []],
+    ["Remote Drift", sections.remoteDrift || []],
+    ["Docs / Vision", sections.docsVision || []],
+    ["Verification", sections.verification || []],
+    ["Blockers", sections.blockers || []],
+    ["Next Action", sections.nextAction || []],
+  ] as const;
+
+  return (
+    <section className="project-cockpit">
+      <header className="project-cockpit-hero">
+        <div>
+          <span className={`project-state project-state-${state.toLowerCase()}`}>{state}</span>
+          <h3>{report.project || "Project"}</h3>
+          <p>{report.path || "No path reported"}</p>
+        </div>
+        <dl>
+          <div>
+            <dt>Branch</dt>
+            <dd>{report.git?.branch || "unknown"}</dd>
+          </div>
+          <div>
+            <dt>HEAD</dt>
+            <dd>{report.git?.head || "unknown"}</dd>
+          </div>
+          <div>
+            <dt>Dirty</dt>
+            <dd>{report.git?.dirtyCount ?? 0}</dd>
+          </div>
+        </dl>
+      </header>
+
+      <div className="project-cockpit-grid">
+        {sectionItems.map(([title, items]) => (
+          <article className={title === "Blockers" && items.length > 0 ? "project-section project-section-blocked" : "project-section"} key={title}>
+            <h4>{title}</h4>
+            {items.length > 0 ? (
+              <ul>
+                {items.map((item, index) => (
+                  <li key={`${title}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>No issues reported.</p>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function parseProjectCockpit(content: string): ProjectCockpitData | null {
+  try {
+    const value = JSON.parse(content) as unknown;
+    if (!value || typeof value !== "object") return null;
+    return value as ProjectCockpitData;
+  } catch {
+    return null;
+  }
 }
 
 function parseThumbnailBoard(content: string): ThumbnailBoardData | null {

@@ -1,10 +1,16 @@
-const { app, BrowserWindow, ipcMain, nativeImage, screen } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeImage, screen, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const dotenv = require("dotenv");
+const {
+  defaultProjectRegistry,
+  mergeProjectRegistry,
+  projectCockpitCheck: runProjectCockpitCheck,
+  projectRegistryArtifact,
+} = require("./project-cockpit.cjs");
 
 dotenv.config({ path: path.join(process.cwd(), ".env.local") });
 
@@ -30,6 +36,7 @@ Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, 
 - Use read-only tools when the user's intent is clear.
 - When Riley says "show me the menu", "show me what I can do", or asks what Ricky can do, call show_menu immediately.
 - For web search, notes, charts, records, image generation, and artifact display, act directly when the request is clear.
+- For repo status, project health, dirty worktree, current branch, remote drift, verification scripts, blockers, or "check <repo>", call project_cockpit_check. Prefer saved repo names like FamilyPlate, Paw Paperwork, Screenwell, TourForge, FactoryIQ, ClarityDashboard, FW Gatekeeper, Overlot, and RileyJarvis when Riley names a project.
 - For thumbnail creation/editing, always use the thumbnail board tools, never generic image_generate and never artifact_show with imageLoading. Generate exactly one 16:9 image per request. Never generate multiple unless Riley separately asks again. Every generate/edit request gets a permanent database number that never changes, like #18 then #19 then #20. Do not renumber visible grid positions. Show paginated 3x3 pages of the permanent numbers. Do not show a standalone fullscreen loading animation for thumbnails. Use Riley's wording literally: do not invent elaborate extra concepts, fake text, or extra thumbnail ideas. For edits, use the exact existing numbered/selected image as input and make only the requested change.
 - The thumbnail board persists across sessions. If Riley references thumbnail #N, trust that permanent number and call the matching thumbnail tool. Do not say you cannot see old thumbnails. Use thumbnail_grid to refresh state or change pages if needed.
 - When a thumbnail finishes generating or editing, do not announce it verbally. The UI updates silently.
@@ -67,7 +74,7 @@ const toolSpecs = [
       type: "object",
       properties: {
         title: { type: "string" },
-        kind: { type: "string", enum: ["text", "markdown", "code", "table", "notes", "mermaid", "image", "imageLoading", "thumbnailBoard", "progress"] },
+        kind: { type: "string", enum: ["text", "markdown", "code", "table", "notes", "mermaid", "image", "imageLoading", "thumbnailBoard", "projectCockpit", "progress"] },
         content: { type: "string" },
         language: { type: "string" },
         fullscreen: { type: "boolean" },
@@ -80,6 +87,29 @@ const toolSpecs = [
     type: "function",
     name: "show_menu",
     description: "Show Ricky's capability menu in the artifact panel. Call this when the user asks 'show me the menu', 'show me what I can do', or asks what Ricky can do.",
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "project_cockpit_check",
+    description: "Read-only local repo cockpit. Inspect a saved repo by name or a local repo path and show branch, dirty worktree, remote drift, docs/vision hints, package scripts, verification suggestions, blockers, and next action.",
+    parameters: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "Saved repo name or alias, such as FamilyPlate, Paw, Screenwell, TourForge, or RileyJarvis." },
+        path: { type: "string", description: "Optional absolute local repository path under an allowed project root." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "project_cockpit_repos",
+    description: "List saved local repositories available to Project Cockpit.",
     parameters: {
       type: "object",
       properties: {},
@@ -400,6 +430,9 @@ function defaultDb() {
   return {
     notes: [],
     records: [],
+    projectCockpit: {
+      repos: defaultProjectRegistry,
+    },
     thumbnailBoard: {
       references: [],
       images: [],
@@ -416,6 +449,11 @@ function normalizeDb(db) {
   const next = db && typeof db === "object" ? db : defaultDb();
   if (!Array.isArray(next.notes)) next.notes = [];
   if (!Array.isArray(next.records)) next.records = [];
+  if (!next.projectCockpit || typeof next.projectCockpit !== "object") {
+    next.projectCockpit = { repos: defaultProjectRegistry };
+  }
+  if (!Array.isArray(next.projectCockpit.repos)) next.projectCockpit.repos = defaultProjectRegistry;
+  next.projectCockpit.repos = mergeProjectRegistry(next.projectCockpit.repos);
   if (!next.thumbnailBoard || typeof next.thumbnailBoard !== "object") {
     next.thumbnailBoard = defaultDb().thumbnailBoard;
   }
@@ -506,12 +544,49 @@ async function createWindow() {
   win.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "media");
   });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    const devUrl = process.env.VITE_DEV_SERVER_URL;
+    const allowedUrl = devUrl || `file://${path.join(process.cwd(), "dist", "index.html")}`;
+    if (!sameAppOrigin(url, allowedUrl)) {
+      event.preventDefault();
+    }
+  });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
     await win.loadURL(devUrl);
   } else {
     await win.loadFile(path.join(process.cwd(), "dist", "index.html"));
+  }
+}
+
+function sameAppOrigin(candidateUrl, allowedUrl) {
+  try {
+    const candidate = new URL(candidateUrl);
+    const allowed = new URL(allowedUrl);
+    if (allowed.protocol === "file:") {
+      if (candidate.protocol !== "file:") return false;
+      const relative = path.relative(path.join(process.cwd(), "dist"), decodeURIComponent(candidate.pathname));
+      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    }
+    return candidate.protocol === allowed.protocol && candidate.host === allowed.host;
+  } catch {
+    return candidateUrl === allowedUrl;
+  }
+}
+
+function assertTrustedSender(event) {
+  const senderUrl = event?.senderFrame?.url || event?.sender?.getURL?.() || "";
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  const allowedUrl = devUrl || `file://${path.join(process.cwd(), "dist", "index.html")}`;
+  if (!sameAppOrigin(senderUrl, allowedUrl)) {
+    throw new Error("Blocked IPC call from an untrusted renderer.");
   }
 }
 
@@ -553,9 +628,13 @@ function setWindowMode(mode) {
   }
 }
 
-ipcMain.handle("tools:list", () => toolSpecs);
+ipcMain.handle("tools:list", (event) => {
+  assertTrustedSender(event);
+  return toolSpecs;
+});
 
-ipcMain.handle("realtime:create-token", async () => {
+ipcMain.handle("realtime:create-token", async (event) => {
+  assertTrustedSender(event);
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is missing in .env.local");
@@ -612,7 +691,8 @@ ipcMain.handle("realtime:create-token", async () => {
   return { value, expiresAt: data.expires_at || data.client_secret?.expires_at || null };
 });
 
-ipcMain.handle("tools:execute", async (_event, toolCall) => {
+ipcMain.handle("tools:execute", async (event, toolCall) => {
+  assertTrustedSender(event);
   const name = String(toolCall?.name || "");
   const args = asObject(toolCall?.arguments);
 
@@ -644,6 +724,19 @@ ipcMain.handle("tools:execute", async (_event, toolCall) => {
           content: buildMenuMarkdown(),
         },
       };
+    }
+
+    if (name === "project_cockpit_repos") {
+      const db = await readDb();
+      return {
+        ok: true,
+        repos: db.projectCockpit.repos,
+        artifact: projectRegistryArtifact(db.projectCockpit.repos),
+      };
+    }
+
+    if (name === "project_cockpit_check") {
+      return await projectCockpitCheck(args);
     }
 
     if (name === "web_search") {
@@ -853,6 +946,14 @@ end tell`;
   }
 });
 
+async function projectCockpitCheck(args) {
+  const db = await readDb();
+  return await runProjectCockpitCheck(args, {
+    cwd: process.cwd(),
+    repos: db.projectCockpit.repos,
+  });
+}
+
 async function webSearch(args) {
   const exaKey = process.env.EXA_API_KEY;
   if (!exaKey) {
@@ -953,6 +1054,13 @@ Here is what you can ask me to do.
 - "Search the web for ..."
 - "Look up the latest on ..."
 - Results render as a clean Markdown brief with source links.
+
+## Project Cockpit
+
+- "Check FamilyPlate."
+- "Show the repo state for Paw."
+- Inspect saved local repos for branch, dirty files, remote drift, docs, scripts, blockers, and next action.
+- Project Cockpit is read-only. It does not commit, push, install packages, or run release commands.
 
 ## Visuals
 
