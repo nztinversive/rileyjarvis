@@ -42,7 +42,7 @@ export type RickyToolResult = {
 
 declare global {
   interface Window {
-    ricky: {
+    ricky?: {
       createRealtimeToken: () => Promise<{ value: string; expiresAt: number | null }>;
       executeTool: (toolCall: RickyToolCall) => Promise<RickyToolResult>;
       getToolSpecs: () => Promise<RickyToolSpec[]>;

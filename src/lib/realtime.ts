@@ -54,6 +54,7 @@ type ResponseOutputItem = {
 };
 
 const realtimeUrl = "https://api.openai.com/v1/realtime/calls";
+const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
 
 export class RickyRealtimeClient {
   private pc: RTCPeerConnection | null = null;
@@ -79,6 +80,9 @@ export class RickyRealtimeClient {
     this.callbacks.onStatus("Minting a Realtime client secret.");
 
     try {
+      if (!window.ricky) {
+        throw new Error(missingElectronBridgeMessage);
+      }
       this.toolSpecs = await window.ricky.getToolSpecs();
       const token = await window.ricky.createRealtimeToken();
       const pc = new RTCPeerConnection();
@@ -155,6 +159,10 @@ export class RickyRealtimeClient {
   }
 
   sendText(text: string): void {
+    if (!window.ricky) {
+      this.callbacks.onStatus(missingElectronBridgeMessage);
+      return;
+    }
     if (!this.dc || this.dc.readyState !== "open") {
       this.callbacks.onStatus("Connect Vector before sending a text prompt.");
       return;
@@ -232,6 +240,10 @@ export class RickyRealtimeClient {
   }
 
   private async executeFunctionCalls(items: ResponseOutputItem[]): Promise<void> {
+    if (!window.ricky) {
+      this.callbacks.onStatus(missingElectronBridgeMessage);
+      return;
+    }
     this.toolRunning = true;
     this.callbacks.onMood("working");
     let shouldCreateResponse = false;

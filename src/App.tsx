@@ -6,8 +6,10 @@ import { newEntry, RickyRealtimeClient, type MouthShape, type RickyConnectionSta
 import type { RickyArtifact } from "./vite-env";
 
 type RickyMode = "display" | "computer";
+const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
 
 export default function App() {
+  const electronBridgeAvailable = Boolean(window.ricky);
   const [connectionState, setConnectionState] = useState<RickyConnectionState>("idle");
   const [mood, setMood] = useState<RickyMood>("idle");
   const [mode, setMode] = useState<RickyMode>("display");
@@ -18,16 +20,27 @@ export default function App() {
   const [showTypeInput, setShowTypeInput] = useState(false);
   const [mouthShape, setMouthShape] = useState<MouthShape>({ open: 0, width: 0.18, round: 0, teeth: 0 });
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([
-    newEntry("system", "Vector is ready. Connect voice, then talk naturally."),
+    newEntry("system", electronBridgeAvailable ? "Vector is ready. Connect voice, then talk naturally." : missingElectronBridgeMessage),
   ]);
-  const [status, setStatus] = useState("Idle");
+  const [status, setStatus] = useState(electronBridgeAvailable ? "Idle" : missingElectronBridgeMessage);
   const [textPrompt, setTextPrompt] = useState("");
   const clientRef = useRef<RickyRealtimeClient | null>(null);
 
   const isConnected = connectionState === "connected";
   const statusTone = connectionState === "error" || mood === "error" ? "blocked" : mood === "working" || mood === "thinking" ? "active" : "idle";
 
+  function reportElectronBridgeMissing() {
+    setConnectionState("error");
+    setMood("error");
+    setStatus(missingElectronBridgeMessage);
+    setTranscript((items) => [newEntry("system", missingElectronBridgeMessage), ...items].slice(0, 80));
+  }
+
   async function connect() {
+    if (!window.ricky) {
+      reportElectronBridgeMissing();
+      return;
+    }
     const client = new RickyRealtimeClient({
       onConnectionState: setConnectionState,
       onMood: setMood,
@@ -66,6 +79,10 @@ export default function App() {
   }
 
   async function switchMode(nextMode: RickyMode) {
+    if (!window.ricky) {
+      reportElectronBridgeMissing();
+      return;
+    }
     setMode(nextMode);
     const result = await window.ricky.executeTool({ name: "set_mode", arguments: { mode: nextMode } });
     if (result.artifact) setArtifact(result.artifact);
