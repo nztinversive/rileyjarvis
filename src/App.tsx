@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, PanelRight, Send } from "lucide-react";
 import { ArtifactPanel } from "./components/ArtifactPanel";
-import { RickyFace } from "./components/RickyFace";
+import { VectorOrb } from "./components/VectorOrb";
 import { newEntry, RickyRealtimeClient, type MouthShape, type RickyConnectionState, type RickyMood, type TranscriptEntry } from "./lib/realtime";
 import type { RickyArtifact } from "./vite-env";
 
@@ -25,6 +25,7 @@ export default function App() {
   const clientRef = useRef<RickyRealtimeClient | null>(null);
 
   const isConnected = connectionState === "connected";
+  const statusTone = connectionState === "error" || mood === "error" ? "blocked" : mood === "working" || mood === "thinking" ? "active" : "idle";
 
   async function connect() {
     const client = new RickyRealtimeClient({
@@ -91,7 +92,7 @@ export default function App() {
     return (
       <main className="app-shell app-shell-mini">
         <section className="mini-companion" aria-label="Vector computer use mini mode">
-          <RickyFace mood={mood} mouthShape={mouthShape} />
+          <VectorOrb mood={mood} mouthShape={mouthShape} />
           <button
             className="mini-restore-button"
             onClick={() => void switchMode("display")}
@@ -110,8 +111,20 @@ export default function App() {
       <div className="window-drag-strip" aria-hidden="true" />
       <div className="window-drag-left-zone" aria-hidden="true" />
       <section className="companion-window">
-        <section className="face-stage">
-          <RickyFace mood={mood} mouthShape={mouthShape} />
+        <header className="operator-header">
+          <div>
+            <span>Vector</span>
+            <small>Display mode</small>
+          </div>
+          <p className={`operator-state operator-state-${statusTone}`}>{mood}</p>
+        </header>
+
+        <section className="orb-stage">
+          <VectorOrb mood={mood} mouthShape={mouthShape} />
+          <div className="orb-status">
+            <span>{connectionState}</span>
+            <p>{status}</p>
+          </div>
         </section>
 
         <footer className="bottom-console">
