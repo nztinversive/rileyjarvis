@@ -4,6 +4,7 @@ const { promisify } = require("node:util");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
+const { fileURLToPath, pathToFileURL } = require("node:url");
 const dotenv = require("dotenv");
 const {
   defaultProjectRegistry,
@@ -12,15 +13,53 @@ const {
   projectRegistryArtifact,
 } = require("./project-cockpit.cjs");
 
-dotenv.config({ path: path.join(process.cwd(), ".env.local") });
-
 const execFileAsync = promisify(execFile);
-const dataDir = path.join(process.cwd(), "data");
-const dbPath = path.join(dataDir, "ricky-db.json");
+const isMac = process.platform === "darwin";
 let currentMode = "display";
 let mainWindow = null;
 let normalWindowBounds = null;
 let dbWriteQueue = Promise.resolve();
+
+function loadEnvironment() {
+  const envPaths = [
+    process.env.VECTOR_ENV_PATH,
+    path.join(process.cwd(), ".env.local"),
+    app.isPackaged ? path.join(path.dirname(process.execPath), ".env.local") : null,
+    app.isPackaged ? path.join(app.getPath("userData"), ".env.local") : null,
+  ].filter(Boolean);
+
+  for (const envPath of envPaths) {
+    dotenv.config({ path: envPath });
+  }
+}
+
+function runtimeDataDir() {
+  return app.isPackaged ? path.join(app.getPath("userData"), "data") : path.join(process.cwd(), "data");
+}
+
+function runtimeDbPath() {
+  return path.join(runtimeDataDir(), "ricky-db.json");
+}
+
+function rendererDistDir() {
+  return path.join(__dirname, "..", "dist");
+}
+
+function rendererEntryPath() {
+  return path.join(rendererDistDir(), "index.html");
+}
+
+function rendererEntryUrl() {
+  return process.env.VITE_DEV_SERVER_URL || pathToFileURL(rendererEntryPath()).href;
+}
+
+function coerceLocalPath(value) {
+  const input = String(value || "").trim();
+  if (/^file:/i.test(input)) {
+    return fileURLToPath(input);
+  }
+  return path.resolve(input);
+}
 
 const RICKY_INSTRUCTIONS = `# Role and Objective
 You are Vector, Noah's desktop AI operator. You speak through realtime voice and can use local tools.
@@ -52,7 +91,7 @@ For Mermaid charts, keep syntax simple: start with flowchart TD, avoid markdown 
 # Audio
 Let the user interrupt. If audio is unclear, ask one short clarifying question instead of guessing.`;
 
-const toolSpecs = [
+const baseToolSpecs = [
   {
     type: "function",
     name: "set_mode",
@@ -297,6 +336,9 @@ const toolSpecs = [
       additionalProperties: false,
     },
   },
+];
+
+const macComputerToolSpecs = [
   {
     type: "function",
     name: "computer_open_app",
@@ -391,7 +433,11 @@ const toolSpecs = [
   },
 ];
 
+const toolSpecs = isMac ? [...baseToolSpecs, ...macComputerToolSpecs] : baseToolSpecs;
+
 async function ensureData() {
+  const dataDir = runtimeDataDir();
+  const dbPath = runtimeDbPath();
   await fs.mkdir(dataDir, { recursive: true });
   try {
     await fs.access(dbPath);
@@ -402,13 +448,13 @@ async function ensureData() {
 
 async function readDb() {
   await ensureData();
-  const raw = await fs.readFile(dbPath, "utf8");
+  const raw = await fs.readFile(runtimeDbPath(), "utf8");
   return normalizeDb(JSON.parse(raw));
 }
 
 async function writeDb(db) {
   await ensureData();
-  await fs.writeFile(dbPath, JSON.stringify(db, null, 2));
+  await fs.writeFile(runtimeDbPath(), JSON.stringify(db, null, 2));
 }
 
 async function updateDb(mutator) {
@@ -551,9 +597,7 @@ async function createWindow() {
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
-    const devUrl = process.env.VITE_DEV_SERVER_URL;
-    const allowedUrl = devUrl || `file://${path.join(process.cwd(), "dist", "index.html")}`;
-    if (!sameAppOrigin(url, allowedUrl)) {
+    if (!sameAppOrigin(url, rendererEntryUrl())) {
       event.preventDefault();
     }
   });
@@ -562,7 +606,7 @@ async function createWindow() {
   if (devUrl) {
     await win.loadURL(devUrl);
   } else {
-    await win.loadFile(path.join(process.cwd(), "dist", "index.html"));
+    await win.loadFile(rendererEntryPath());
   }
 }
 
@@ -572,7 +616,7 @@ function sameAppOrigin(candidateUrl, allowedUrl) {
     const allowed = new URL(allowedUrl);
     if (allowed.protocol === "file:") {
       if (candidate.protocol !== "file:") return false;
-      const relative = path.relative(path.join(process.cwd(), "dist"), decodeURIComponent(candidate.pathname));
+      const relative = path.relative(rendererDistDir(), fileURLToPath(candidate));
       return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
     }
     return candidate.protocol === allowed.protocol && candidate.host === allowed.host;
@@ -583,9 +627,7 @@ function sameAppOrigin(candidateUrl, allowedUrl) {
 
 function assertTrustedSender(event) {
   const senderUrl = event?.senderFrame?.url || event?.sender?.getURL?.() || "";
-  const devUrl = process.env.VITE_DEV_SERVER_URL;
-  const allowedUrl = devUrl || `file://${path.join(process.cwd(), "dist", "index.html")}`;
-  if (!sameAppOrigin(senderUrl, allowedUrl)) {
+  if (!sameAppOrigin(senderUrl, rendererEntryUrl())) {
     throw new Error("Blocked IPC call from an untrusted renderer.");
   }
 }
@@ -605,8 +647,12 @@ function setWindowMode(mode) {
     const margin = 18;
     mainWindow.setMinimumSize(150, 150);
     mainWindow.setResizable(false);
-    mainWindow.setAlwaysOnTop(true, "floating");
-    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    if (isMac) {
+      mainWindow.setAlwaysOnTop(true, "floating");
+      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    } else {
+      mainWindow.setAlwaysOnTop(true);
+    }
     mainWindow.setBounds({
       x: workArea.x + margin,
       y: workArea.y + workArea.height - miniSize - margin,
@@ -617,7 +663,9 @@ function setWindowMode(mode) {
   }
 
   mainWindow.setAlwaysOnTop(false);
-  mainWindow.setVisibleOnAllWorkspaces(false);
+  if (isMac) {
+    mainWindow.setVisibleOnAllWorkspaces(false);
+  }
   mainWindow.setResizable(true);
   mainWindow.setMinimumSize(420, 520);
   if (normalWindowBounds) {
@@ -698,6 +746,17 @@ ipcMain.handle("tools:execute", async (event, toolCall) => {
 
   try {
     if (name === "set_mode") {
+      if (args.mode === "computer" && !isMac) {
+        return {
+          ok: false,
+          mode: currentMode,
+          artifact: {
+            title: "Computer Use Unavailable",
+            kind: "markdown",
+            content: "Computer-control mode is currently available only on macOS. Voice, artifacts, Project Cockpit, notes, records, web search, image generation, and thumbnails can still run on this platform.",
+          },
+        };
+      }
       currentMode = args.mode === "computer" ? "computer" : "display";
       setWindowMode(currentMode);
       return {
@@ -858,6 +917,9 @@ ipcMain.handle("tools:execute", async (event, toolCall) => {
     }
 
     if (name.startsWith("computer_") || name === "screen_snapshot" || name === "ui_inspect") {
+      if (!isMac) {
+        return { ok: false, error: "Computer-control tools are currently available only on macOS." };
+      }
       const blocked = requireComputerMode();
       if (blocked) return blocked;
     }
@@ -900,6 +962,7 @@ ipcMain.handle("tools:execute", async (event, toolCall) => {
     }
 
     if (name === "screen_snapshot") {
+      const dataDir = runtimeDataDir();
       await fs.mkdir(dataDir, { recursive: true });
       const screenshotPath = path.join(dataDir, `screenshot-${Date.now()}.png`);
       await execFileAsync("screencapture", ["-x", screenshotPath]);
@@ -1032,6 +1095,17 @@ function hostname(url) {
 }
 
 function buildMenuMarkdown() {
+  const computerUseSection = isMac
+    ? `## Computer Use Mode
+
+- "Switch to computer use mode."
+- Open apps, click, type, press Enter/Return, scroll, inspect the UI, and take screen snapshots.
+- Vector asks before risky actions like sending, deleting, buying, changing settings, or sharing private info.`
+    : `## Computer Use Mode
+
+- Computer-control tools are currently available only on macOS.
+- Voice, artifacts, Project Cockpit, notes, records, web search, image generation, and thumbnails are available on this platform.`;
+
   return `# Vector Menu
 
 Here is what you can ask me to do.
@@ -1073,11 +1147,7 @@ Here is what you can ask me to do.
 - Add notes to Vector's local note grid.
 - Create, search, update, and confirm-delete local database records.
 
-## Computer Use Mode
-
-- "Switch to computer use mode."
-- Open apps, click, type, press Enter/Return, scroll, inspect the UI, and take screen snapshots.
-- Vector asks before risky actions like sending, deleting, buying, changing settings, or sharing private info.
+${computerUseSection}
 
 ## Good Starter Prompts
 
@@ -1116,6 +1186,7 @@ async function generateImage(args) {
   const b64 = data.data?.[0]?.b64_json;
   const url = data.data?.[0]?.url;
   if (b64) {
+    const dataDir = runtimeDataDir();
     await fs.mkdir(dataDir, { recursive: true });
     const imagePath = path.join(dataDir, `ricky-image-${Date.now()}.png`);
     await fs.writeFile(imagePath, Buffer.from(b64, "base64"));
@@ -1148,7 +1219,7 @@ function imageErrorArtifact(error) {
 }
 
 async function thumbnailReferenceAdd(args) {
-  const imagePath = path.resolve(String(args.imagePath || "").replace(/^file:\/\//, ""));
+  const imagePath = coerceLocalPath(args.imagePath);
   try {
     await fs.access(imagePath);
   } catch {
@@ -1399,6 +1470,7 @@ async function saveImageResponse(data, prefix) {
   if (!b64) {
     throw new Error("Image response did not include image data.");
   }
+  const dataDir = runtimeDataDir();
   await fs.mkdir(dataDir, { recursive: true });
   const imagePath = path.join(dataDir, `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.png`);
   await fs.writeFile(imagePath, Buffer.from(b64, "base64"));
@@ -1649,7 +1721,10 @@ function fallbackMermaidDiagram(title) {
   return `flowchart TD\n  A["${safeTitle}"] --> B["Chart request received"]\n  B --> C["Vector will show a safe fallback if syntax fails"]`;
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  loadEnvironment();
+  return createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

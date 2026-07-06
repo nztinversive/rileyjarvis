@@ -2,17 +2,51 @@
   "name": "rileyjarvis",
   "version": "1.0.0",
   "description": "A local Electron desktop AI companion powered by OpenAI Realtime.",
+  "productName": "Vector",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "start": "electron .",
     "build": "tsc --noEmit && vite build",
+    "pack": "npm run build && electron-builder --dir",
+    "dist:win": "npm run build && electron-builder --win portable --x64 --publish=never",
+    "dist:win:nsis": "npm run build && electron-builder --win nsis --x64 --publish=never",
     "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["electron", "openai", "realtime", "voice", "desktop-assistant", "ai-companion"],
+  "keywords": [
+    "electron",
+    "openai",
+    "realtime",
+    "voice",
+    "desktop-assistant",
+    "ai-companion"
+  ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "build": {
+    "appId": "com.rileyjarvis.vector",
+    "productName": "Vector",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "store",
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
+    }
+  },
   "dependencies": {
     "dotenv": "^17.4.2",
     "lucide-react": "^1.22.0",
@@ -25,7 +59,9 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
     "electron": "^42.5.1",
+    "electron-builder": "^26.15.3",
     "typescript": "^6.0.3",
     "vite": "^8.1.0",
     "wait-on": "^9.0.10"
