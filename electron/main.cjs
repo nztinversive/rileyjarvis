@@ -652,7 +652,7 @@ ipcMain.handle("realtime:create-token", async (event) => {
     body: JSON.stringify({
       session: {
         type: "realtime",
-        model: "gpt-realtime-2",
+        model: "gpt-realtime-2.1-mini",
         instructions,
         output_modalities: ["audio"],
         reasoning: { effort: "low" },
