@@ -27,20 +27,10 @@ It is built with Electron, React, Vite, TypeScript, and the OpenAI Realtime API.
 ## Quick Start
 
 ```bash
-git clone https://github.com/rbrown101010/rileyjarvis.git
+git clone https://github.com/nztinversive/rileyjarvis.git
 cd rileyjarvis
 npm install
 cp .env.example .env.local
-npm run dev
-```
-
-On Windows PowerShell:
-
-```powershell
-git clone https://github.com/rbrown101010/rileyjarvis.git
-cd rileyjarvis
-npm install
-Copy-Item .env.example .env.local
 npm run dev
 ```
 
@@ -52,6 +42,82 @@ EXA_API_KEY=your_exa_api_key_here
 ```
 
 `OPENAI_API_KEY` is required. `EXA_API_KEY` is optional; web search will show a setup message when it is missing.
+
+## Windows Setup
+
+### 1. Install the prerequisites
+
+Install these on the Windows computer:
+
+- Windows 10 or 11, 64-bit.
+- Node.js 22.12 or newer, including npm.
+- Git for Windows.
+- An OpenAI API key with Realtime and image generation access.
+
+Open a new PowerShell window after installing Node.js and Git, then confirm they are available:
+
+```powershell
+node --version
+npm --version
+git --version
+```
+
+### 2. Download and configure Vector
+
+Run these commands in PowerShell:
+
+```powershell
+git clone https://github.com/nztinversive/rileyjarvis.git
+cd rileyjarvis
+npm ci
+Copy-Item .env.example .env.local
+notepad .env.local
+```
+
+Replace the placeholder OpenAI key, then save and close Notepad:
+
+```dotenv
+OPENAI_API_KEY=your_openai_api_key_here
+EXA_API_KEY=your_exa_api_key_here
+```
+
+The Exa key is optional and is only needed for web search. Keep `.env.local` private and never commit it.
+
+### 3. Run Vector from source
+
+From the `rileyjarvis` folder:
+
+```powershell
+npm run dev
+```
+
+Vite starts on `127.0.0.1:5173`, then the Vector desktop window opens. Allow microphone access when Windows prompts for it. If voice input is blocked later, enable microphone access under **Settings > Privacy & security > Microphone**.
+
+### 4. Build the portable Windows app
+
+To create a standalone portable executable:
+
+```powershell
+npm run dist:win
+Copy-Item .env.local release\.env.local
+```
+
+The build output is:
+
+```text
+release\Vector-1.0.0-portable-x64.exe
+```
+
+Keep `.env.local` beside the portable `.exe`, then launch it from PowerShell or File Explorer. If you move the `.exe` to another folder or computer, move `.env.local` with it.
+
+The app is currently unsigned. Windows SmartScreen may show a warning the first time it opens; choose **More info**, verify the app name is Vector, and choose **Run anyway** only if you built or received the file from a source you trust.
+
+### Windows troubleshooting
+
+- If PowerShell says `npm.ps1` cannot run because script execution is disabled, use `npm.cmd ci`, `npm.cmd run dev`, or `npm.cmd run dist:win` instead.
+- If `node`, `npm`, or `git` is not recognized, close PowerShell, reopen it, and repeat the version checks above.
+- If startup reports a missing OpenAI key, confirm the file is named exactly `.env.local` and is in the repo root for development or beside the portable `.exe` for packaged use.
+- Computer-control tools are currently macOS-only. On Windows, voice, artifacts, Project Cockpit, notes, records, web search, image generation, and thumbnails remain available.
 
 ## Platform Notes
 
