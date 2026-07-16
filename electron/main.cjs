@@ -21,8 +21,10 @@ let normalWindowBounds = null;
 let dbWriteQueue = Promise.resolve();
 
 function loadEnvironment() {
+  const portableExecutableDir = app.isPackaged ? process.env.PORTABLE_EXECUTABLE_DIR : null;
   const envPaths = [
     process.env.VECTOR_ENV_PATH,
+    portableExecutableDir ? path.join(portableExecutableDir, ".env.local") : null,
     path.join(process.cwd(), ".env.local"),
     app.isPackaged ? path.join(path.dirname(process.execPath), ".env.local") : null,
     app.isPackaged ? path.join(app.getPath("userData"), ".env.local") : null,
