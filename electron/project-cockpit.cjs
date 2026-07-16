@@ -3,6 +3,7 @@ const { promisify } = require("node:util");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { fileURLToPath } = require("node:url");
 
 const execFileAsync = promisify(execFile);
 
@@ -10,6 +11,8 @@ const userHome = os.homedir();
 const defaultProjectRoots = [
   path.resolve(process.cwd(), ".."),
   path.join(userHome, "Documents", "GitHub"),
+  path.join(userHome, "source", "repos"),
+  path.join(userHome, "code"),
   path.join(userHome, "Documents", "Screenshot app"),
   path.join(userHome, "Documents", "Test app"),
 ];
@@ -142,9 +145,7 @@ function resolveProjectRepo(repos, args = {}, options = {}) {
 function coerceRequestedPath(value) {
   if (/^file:\/\//i.test(value)) {
     try {
-      const url = new URL(value);
-      if (url.protocol !== "file:" || url.host) return "";
-      return decodeURIComponent(url.pathname);
+      return fileURLToPath(value);
     } catch {
       return "";
     }

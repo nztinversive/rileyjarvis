@@ -176,10 +176,7 @@ function renderArtifact(artifact: RickyArtifact, mermaidState: MermaidState) {
   }
 
   if (artifact.kind === "image") {
-    const src =
-      artifact.content.startsWith("http") || artifact.content.startsWith("file://") || artifact.content.startsWith("data:")
-        ? artifact.content
-        : `file://${artifact.content}`;
+    const src = imageSource(artifact.content);
     return <img className="artifact-image" src={src} alt={artifact.title} />;
   }
 
@@ -229,6 +226,13 @@ function renderArtifact(artifact: RickyArtifact, mermaidState: MermaidState) {
   }
 
   return <pre className="text-artifact">{artifact.content}</pre>;
+}
+
+function imageSource(content: string) {
+  if (/^(https?:|file:|data:)/i.test(content)) return content;
+  const normalized = content.replace(/\\/g, "/");
+  const prefix = /^[A-Za-z]:\//.test(normalized) ? "file:///" : "file://";
+  return encodeURI(`${prefix}${normalized}`);
 }
 
 function ThumbnailBoard({ content }: { content: string }) {
