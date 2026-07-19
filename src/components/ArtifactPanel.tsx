@@ -432,8 +432,22 @@ function renderMarkdown(content: string) {
     if (line.startsWith("### ")) {
       return <h3 key={index}>{renderInline(line.slice(4))}</h3>;
     }
-    if (line.startsWith("- ")) {
-      return <li key={index}>{renderInline(line.slice(2))}</li>;
+    const bullet = line.match(/^(\s*)[-*] (.*)$/);
+    if (bullet) {
+      const depth = Math.min(3, Math.floor(bullet[1].length / 2));
+      return (
+        <li key={index} style={depth > 0 ? { marginLeft: `${18 + depth * 16}px` } : undefined}>
+          {renderInline(bullet[2])}
+        </li>
+      );
+    }
+    const numbered = line.match(/^\s*(\d+)\. (.*)$/);
+    if (numbered) {
+      return (
+        <li className="markdown-numbered" key={index} data-number={`${numbered[1]}.`}>
+          {renderInline(numbered[2])}
+        </li>
+      );
     }
     if (!line.trim()) {
       return <div className="markdown-gap" key={index} />;

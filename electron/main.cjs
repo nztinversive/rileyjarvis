@@ -577,6 +577,14 @@ function appleScriptString(value) {
 async function createWindow() {
   await ensureData();
   await clearStartupLoadingThumbnails();
+  const appIcon = nativeImage.createFromPath(path.join(__dirname, "..", "build", "icon.png"));
+  if (process.platform === "darwin" && app.dock && !appIcon.isEmpty()) {
+    try {
+      app.dock.setIcon(appIcon);
+    } catch {
+      // Dock icon is cosmetic; ignore failures.
+    }
+  }
   const win = new BrowserWindow({
     width: 1120,
     height: 760,
@@ -586,7 +594,7 @@ async function createWindow() {
     frame: false,
     transparent: true,
     backgroundColor: "#00000000",
-    icon: nativeImage.createEmpty(),
+    icon: appIcon.isEmpty() ? nativeImage.createEmpty() : appIcon,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

@@ -1,12 +1,24 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, PanelRight, Send, Zap } from "lucide-react";
+import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, Moon, PanelRight, Send, Sun, Zap } from "lucide-react";
 import { ArtifactPanel } from "./components/ArtifactPanel";
 import { VectorOrb } from "./components/VectorOrb";
 import { newEntry, RickyRealtimeClient, type MouthShape, type RickyConnectionState, type RickyMood, type TranscriptEntry } from "./lib/realtime";
 import type { RickyArtifact, RickyRemoteCodexEvent } from "./vite-env";
 
 type RickyMode = "display" | "computer";
+type VectorTheme = "day" | "night";
 const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
+
+function initialTheme(): VectorTheme {
+  try {
+    const saved = window.localStorage.getItem("vector-theme");
+    if (saved === "day" || saved === "night") return saved;
+  } catch {
+    // localStorage can be unavailable; fall through to time-based default.
+  }
+  const hour = new Date().getHours();
+  return hour >= 19 || hour < 7 ? "night" : "day";
+}
 
 export default function App() {
   const electronBridgeAvailable = Boolean(window.ricky);
@@ -25,9 +37,35 @@ export default function App() {
   const [status, setStatus] = useState(electronBridgeAvailable ? "Idle" : missingElectronBridgeMessage);
   const [textPrompt, setTextPrompt] = useState("");
   const [uptime, setUptime] = useState("STANDBY");
+  const [theme, setTheme] = useState<VectorTheme>(initialTheme);
   const clientRef = useRef<RickyRealtimeClient | null>(null);
+  const artifactKeyRef = useRef("");
 
   const isConnected = connectionState === "connected";
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((current) => {
+      const next = current === "day" ? "night" : "day";
+      try {
+        window.localStorage.setItem("vector-theme", next);
+      } catch {
+        // Persistence is best-effort.
+      }
+      return next;
+    });
+  }
+
+  function announceArtifact(nextArtifact: RickyArtifact) {
+    const key = `${nextArtifact.kind}:${nextArtifact.title}`;
+    if (key !== artifactKeyRef.current) {
+      artifactKeyRef.current = key;
+      playArrivalSound();
+    }
+  }
 
   useEffect(() => {
     if (!isConnected) {
@@ -50,6 +88,7 @@ export default function App() {
   useEffect(() => {
     if (!window.ricky?.onRemoteCodexEvent) return;
     return window.ricky.onRemoteCodexEvent((event: RickyRemoteCodexEvent) => {
+      announceArtifact(event.artifact);
       setArtifact(event.artifact);
       setArtifactVisible(true);
       const taskStatus = event.task.status === "needs_input" ? "needs input" : event.task.status.replace("_", " ");
@@ -74,11 +113,15 @@ export default function App() {
       return;
     }
     const client = new RickyRealtimeClient({
-      onConnectionState: setConnectionState,
+      onConnectionState: (state) => {
+        setConnectionState(state);
+        if (state === "connected") playConnectSound();
+      },
       onMood: setMood,
       onMouthShape: setMouthShape,
       onTranscript: (entry) => setTranscript((items) => [entry, ...items].slice(0, 80)),
       onArtifact: (nextArtifact) => {
+        announceArtifact(nextArtifact);
         setArtifact(nextArtifact);
         setArtifactVisible(true);
         if (nextArtifact.fullscreen) setArtifactFullscreen(true);
@@ -108,6 +151,7 @@ export default function App() {
     clientRef.current?.disconnect();
     clientRef.current = null;
     setStatus("Disconnected");
+    playDisconnectSound();
   }
 
   async function switchMode(nextMode: RickyMode) {
@@ -304,6 +348,15 @@ export default function App() {
                 </span>
                 <small>Log</small>
               </button>
+              <button
+                className="ability-card"
+                onClick={toggleTheme}
+                aria-label={theme === "day" ? "Switch to night mode" : "Switch to day mode"}
+                title={theme === "day" ? "Switch to night mode" : "Switch to day mode"}
+              >
+                <span className="ability-icon">{theme === "day" ? <Moon size={15} /> : <Sun size={15} />}</span>
+                <small>{theme === "day" ? "Night" : "Day"}</small>
+              </button>
             </div>
           </section>
         </footer>
@@ -338,6 +391,41 @@ export default function App() {
       />
     </main>
   );
+}
+
+function playTone(freqStart: number, freqEnd: number, duration: number, volume: number, type: OscillatorType = "sine") {
+  try {
+    const audio = new window.AudioContext();
+    const gain = audio.createGain();
+    const osc = audio.createOscillator();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freqStart, audio.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, audio.currentTime + duration * 0.6);
+    gain.gain.setValueAtTime(0.0001, audio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(volume, audio.currentTime + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+
+    osc.connect(gain);
+    gain.connect(audio.destination);
+    osc.start();
+    osc.stop(audio.currentTime + duration + 0.02);
+    window.setTimeout(() => void audio.close(), (duration + 0.12) * 1000);
+  } catch {
+    // Audio cues are optional; ignore browsers that block short sounds.
+  }
+}
+
+function playConnectSound() {
+  playTone(520, 880, 0.14, 0.03);
+}
+
+function playDisconnectSound() {
+  playTone(660, 330, 0.16, 0.025);
+}
+
+function playArrivalSound() {
+  playTone(980, 1240, 0.09, 0.018, "triangle");
 }
 
 function playThumbnailReadySound() {
