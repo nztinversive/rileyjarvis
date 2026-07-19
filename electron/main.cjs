@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeImage, Notification, screen, shell } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } = require("electron");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const path = require("node:path");
@@ -1777,9 +1777,49 @@ function fallbackMermaidDiagram(title) {
   return `flowchart TD\n  A["${safeTitle}"] --> B["Chart request received"]\n  B --> C["Vector will show a safe fallback if syntax fails"]`;
 }
 
+let tray = null;
+
+function toggleMainWindow() {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) {
+    void createWindow();
+    return;
+  }
+  if (win.isVisible() && win.isFocused()) {
+    win.hide();
+  } else {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+}
+
+function setupTrayAndSummon() {
+  const image = nativeImage.createFromPath(path.join(__dirname, "..", "build", "icon.png"));
+  if (!image.isEmpty()) {
+    tray = new Tray(image.resize({ width: 18, height: 18 }));
+    tray.setToolTip("Vector");
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: "Show / Hide Vector", accelerator: "CommandOrControl+Shift+V", click: toggleMainWindow },
+        { type: "separator" },
+        { label: "Quit Vector", role: "quit" },
+      ]),
+    );
+    tray.on("click", toggleMainWindow);
+  }
+  const registered = globalShortcut.register("CommandOrControl+Shift+V", toggleMainWindow);
+  if (!registered) console.warn("Vector: could not register the global summon shortcut.");
+}
+
 app.whenReady().then(() => {
   loadEnvironment();
+  setupTrayAndSummon();
   return createWindow();
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {

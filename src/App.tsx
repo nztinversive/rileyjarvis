@@ -7,6 +7,8 @@ import type { RickyArtifact, RickyRemoteCodexEvent } from "./vite-env";
 
 type RickyMode = "display" | "computer";
 type VectorTheme = "day" | "night";
+const autoSleepMs = 5 * 60 * 1000;
+const autoSleepMessage = "Went to standby after 5 minutes of silence. Connect to resume.";
 const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
 
 function initialTheme(): VectorTheme {
@@ -40,8 +42,22 @@ export default function App() {
   const [theme, setTheme] = useState<VectorTheme>(initialTheme);
   const clientRef = useRef<RickyRealtimeClient | null>(null);
   const artifactKeyRef = useRef("");
+  const lastActivityRef = useRef(Date.now());
 
   const isConnected = connectionState === "connected";
+
+  useEffect(() => {
+    if (!isConnected) return;
+    const busy = mood === "speaking" || mood === "thinking" || mood === "working";
+    const timer = window.setInterval(() => {
+      if (!busy && Date.now() - lastActivityRef.current > autoSleepMs) {
+        disconnect();
+        setStatus(autoSleepMessage);
+        setTranscript((items) => [newEntry("system", autoSleepMessage), ...items].slice(0, 80));
+      }
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [isConnected, mood]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -115,11 +131,20 @@ export default function App() {
     const client = new RickyRealtimeClient({
       onConnectionState: (state) => {
         setConnectionState(state);
-        if (state === "connected") playConnectSound();
+        if (state === "connected") {
+          lastActivityRef.current = Date.now();
+          playConnectSound();
+        }
       },
-      onMood: setMood,
+      onMood: (nextMood) => {
+        if (nextMood !== "idle") lastActivityRef.current = Date.now();
+        setMood(nextMood);
+      },
       onMouthShape: setMouthShape,
-      onTranscript: (entry) => setTranscript((items) => [entry, ...items].slice(0, 80)),
+      onTranscript: (entry) => {
+        lastActivityRef.current = Date.now();
+        setTranscript((items) => [entry, ...items].slice(0, 80));
+      },
       onArtifact: (nextArtifact) => {
         announceArtifact(nextArtifact);
         setArtifact(nextArtifact);
@@ -176,6 +201,7 @@ export default function App() {
   function sendTextPrompt() {
     const trimmed = textPrompt.trim();
     if (!trimmed) return;
+    lastActivityRef.current = Date.now();
     clientRef.current?.sendText(trimmed);
     setTextPrompt("");
     setShowTypeInput(false);

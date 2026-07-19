@@ -7,6 +7,8 @@ It is built with Electron, React, Vite, TypeScript, and the OpenAI Realtime API.
 ## Features
 
 - Realtime speech-to-speech conversation with OpenAI Realtime.
+- Global summon: `Cmd/Ctrl+Shift+V` toggles the Vector window from anywhere, and Vector lives in the tray/menu bar.
+- Auto-standby: voice sessions disconnect after 5 minutes of silence so an idle session never keeps billing.
 - Animated companion face with listening, thinking, speaking, and working states.
 - Artifact panel for markdown, menus, notes, Mermaid diagrams, generated images, Project Cockpit reports, records, and progress.
 - Project Cockpit for read-only local repo status: branch, dirty files, remote drift, docs/vision hints, package scripts, verification suggestions, blockers, and next action.
