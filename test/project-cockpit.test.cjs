@@ -4,6 +4,7 @@ const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { pathToFileURL } = require("node:url");
 
 const {
   coerceRequestedPath,
@@ -21,7 +22,7 @@ test("mergeProjectRegistry keeps defaults and lets saved repos override by name"
   assert.deepEqual(merged[0], {
     name: "RileyJarvis",
     aliases: ["local"],
-    path: "/local/rileyjarvis",
+    path: path.resolve("/local/rileyjarvis"),
   });
 });
 
@@ -47,7 +48,7 @@ test("resolveProjectRepo requires absolute paths under allowed roots", async (t)
   assert.equal(isAllowedProjectPath(inside, [root]), true);
   assert.equal(isAllowedProjectPath(path.join(siblingPrefix, "repo"), [root]), false);
 
-  const fileUrl = `file://${encodeURI(inside)}`;
+  const fileUrl = pathToFileURL(inside).href;
   assert.equal(coerceRequestedPath(fileUrl), inside);
 
   const relative = resolveProjectRepo([], { path: "relative/repo" }, { allowedRoots: [root], defaultRepos: [] });

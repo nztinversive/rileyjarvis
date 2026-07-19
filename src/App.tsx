@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, PanelRight, Send } from "lucide-react";
 import { ArtifactPanel } from "./components/ArtifactPanel";
 import { VectorOrb } from "./components/VectorOrb";
 import { newEntry, RickyRealtimeClient, type MouthShape, type RickyConnectionState, type RickyMood, type TranscriptEntry } from "./lib/realtime";
-import type { RickyArtifact } from "./vite-env";
+import type { RickyArtifact, RickyRemoteCodexEvent } from "./vite-env";
 
 type RickyMode = "display" | "computer";
 const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
@@ -28,6 +28,20 @@ export default function App() {
 
   const isConnected = connectionState === "connected";
   const statusTone = connectionState === "error" || mood === "error" ? "blocked" : mood === "working" || mood === "thinking" ? "active" : "idle";
+
+  useEffect(() => {
+    if (!window.ricky?.onRemoteCodexEvent) return;
+    return window.ricky.onRemoteCodexEvent((event: RickyRemoteCodexEvent) => {
+      setArtifact(event.artifact);
+      setArtifactVisible(true);
+      const taskStatus = event.task.status === "needs_input" ? "needs input" : event.task.status.replace("_", " ");
+      setStatus(`${event.task.project}: ${taskStatus}. ${event.task.lastAction || ""}`.trim());
+      if (event.announcement) {
+        setTranscript((items) => [newEntry("system", event.announcement), ...items].slice(0, 80));
+        clientRef.current?.announceRemoteCodexEvent(event);
+      }
+    });
+  }, []);
 
   function reportElectronBridgeMissing() {
     setConnectionState("error");

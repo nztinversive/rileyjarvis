@@ -1,4 +1,4 @@
-import type { RickyArtifact, RickyToolCall, RickyToolResult, RickyToolSpec } from "../vite-env";
+import type { RickyArtifact, RickyRemoteCodexEvent, RickyToolCall, RickyToolResult, RickyToolSpec } from "../vite-env";
 
 export type RickyConnectionState = "idle" | "connecting" | "connected" | "error";
 export type RickyMood = "idle" | "listening" | "thinking" | "speaking" | "working" | "error";
@@ -63,7 +63,10 @@ export class RickyRealtimeClient {
   private callbacks: RealtimeCallbacks;
   private currentAssistantText = "";
   private toolSpecs: RickyToolSpec[] = [];
+  private remoteCodexAvailable = false;
   private toolRunning = false;
+  private responseInProgress = false;
+  private pendingAnnouncements: string[] = [];
   private audioContext: AudioContext | null = null;
   private outputAnalyser: AnalyserNode | null = null;
   private outputMeterFrame = 0;
@@ -84,6 +87,10 @@ export class RickyRealtimeClient {
         throw new Error(missingElectronBridgeMessage);
       }
       this.toolSpecs = await window.ricky.getToolSpecs();
+      this.remoteCodexAvailable = this.toolSpecs.some((tool) => tool.name === "remote_codex_start");
+      if (!this.remoteCodexAvailable) {
+        throw new Error("Remote Codex is not registered in Vector's local tool bridge.");
+      }
       const token = await window.ricky.createRealtimeToken();
       const pc = new RTCPeerConnection();
       const audio = document.createElement("audio");
@@ -107,7 +114,8 @@ export class RickyRealtimeClient {
       dc.addEventListener("open", () => {
         this.callbacks.onConnectionState("connected");
         this.callbacks.onMood("idle");
-        this.callbacks.onStatus("Vector is live. Start talking naturally.");
+        this.callbacks.onStatus("Vector is live. Remote Codex is ready.");
+        this.flushRemoteCodexAnnouncements();
       });
       dc.addEventListener("message", (event) => {
         void this.handleServerEvent(event.data);
@@ -152,6 +160,8 @@ export class RickyRealtimeClient {
     this.dc = null;
     this.pc = null;
     this.micStream = null;
+    this.remoteCodexAvailable = false;
+    this.responseInProgress = false;
     this.currentAssistantText = "";
     this.callbacks.onConnectionState("idle");
     this.callbacks.onMood("idle");
@@ -179,6 +189,12 @@ export class RickyRealtimeClient {
     this.sendEvent({ type: "response.create" });
   }
 
+  announceRemoteCodexEvent(event: RickyRemoteCodexEvent): void {
+    if (!event.announcement) return;
+    this.pendingAnnouncements.push(event.announcement);
+    this.flushRemoteCodexAnnouncements();
+  }
+
   private async handleServerEvent(raw: string): Promise<void> {
     const event = safeParseEvent(raw);
     if (!event.type) return;
@@ -186,6 +202,11 @@ export class RickyRealtimeClient {
     if (event.type === "error") {
       this.callbacks.onMood("error");
       this.callbacks.onStatus(event.error?.message || "Realtime API returned an error.");
+      return;
+    }
+
+    if (event.type === "response.created") {
+      this.responseInProgress = true;
       return;
     }
 
@@ -225,6 +246,7 @@ export class RickyRealtimeClient {
     }
 
     if (event.type === "response.done") {
+      this.responseInProgress = false;
       const output = event.response?.output || [];
       const spoken = this.currentAssistantText || output.map(collectOutputText).filter(Boolean).join("\n");
       if (spoken) this.callbacks.onTranscript(newEntry("ricky", spoken));
@@ -236,6 +258,7 @@ export class RickyRealtimeClient {
       } else if (!this.toolRunning) {
         this.callbacks.onMood("idle");
       }
+      this.flushRemoteCodexAnnouncements();
     }
   }
 
@@ -296,6 +319,7 @@ export class RickyRealtimeClient {
 
     if (shouldCreateResponse) this.sendEvent({ type: "response.create" });
     this.toolRunning = false;
+    this.flushRemoteCodexAnnouncements();
   }
 
   private async returnToolOutput(callId: string, result: RickyToolResult): Promise<void> {
@@ -311,8 +335,21 @@ export class RickyRealtimeClient {
 
   private sendEvent(event: Record<string, unknown>): void {
     if (this.dc?.readyState === "open") {
+      if (event.type === "response.create") this.responseInProgress = true;
       this.dc.send(JSON.stringify(event));
     }
+  }
+
+  private flushRemoteCodexAnnouncements(): void {
+    if (!this.dc || this.dc.readyState !== "open" || this.toolRunning || this.responseInProgress) return;
+    const announcement = this.pendingAnnouncements.shift();
+    if (!announcement) return;
+    this.sendEvent({
+      type: "response.create",
+      response: {
+        instructions: `This is an automatic Remote Codex lifecycle notification. Do not call tools. Briefly tell Noah: ${announcement}`,
+      },
+    });
   }
 
   private startOutputMeter(stream: MediaStream): void {

@@ -129,6 +129,30 @@ Vector runs locally. Depending on the features you use, macOS may ask for:
 
 Computer-control tools are blocked until the app is in computer-use mode. Computer-control tools are currently exposed only on macOS; on Windows, voice, artifacts, Project Cockpit, notes, records, web search, image generation, and thumbnails remain available.
 
+## Remote Codex over Tailscale
+
+Vector can delegate coding work to Codex CLI on a Linux machine reachable through Tailscale and SSH. Configure the SSH target and one or more remote repositories in `.env.local`:
+
+```dotenv
+VECTOR_CODEX_SSH_TARGET=your-ssh-config-alias
+VECTOR_CODEX_REPOS={"default":{"path":"/home/your-user/project","aliases":["linux","remote-box"]}}
+VECTOR_CODEX_DEFAULT_REPO=default
+VECTOR_CODEX_TIMEOUT_MS=1800000
+```
+
+The SSH target can be a `user@host` pair or an alias from `~/.ssh/config`. Repository names and aliases are the only project values Vector accepts; spoken prompts cannot supply arbitrary remote paths.
+
+Remote Codex tools support:
+
+- Checking the configured host, Codex CLI, repository, and branch.
+- Starting background `codex exec --json` jobs with full access by default on lizardbox; read-only and workspace-write remain available when explicitly requested.
+- Remembering the active or latest task so status, resume, and cancel commands do not require a task id.
+- Streaming progress into Vector, issuing desktop and voice notifications on terminal states, and relaying questions that require user input.
+- Retrying one recoverable SSH or Tailscale connection failure automatically.
+- Cancelling jobs and resuming completed Codex threads for follow-ups such as commit, push, and pull-request creation.
+
+Prompts are sent over SSH stdin rather than inserted into a remote shell command. Vector adds an operator preamble that tells Codex to inspect repository instructions, Git state, and project verification commands and to return a consistent completion report. The Linux account must already have Codex CLI installed and authenticated.
+
 ## Project Cockpit
 
 Project Cockpit is a read-only local repo inspector. Ask Vector to check a saved project by name, for example:

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeImage, screen, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeImage, Notification, screen, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const path = require("node:path");
@@ -12,9 +12,12 @@ const {
   projectCockpitCheck: runProjectCockpitCheck,
   projectRegistryArtifact,
 } = require("./project-cockpit.cjs");
+const { createRemoteCodexManager } = require("./remote-codex.cjs");
+const { executeRemoteCodexTool, remoteCodexToolSpecs } = require("./remote-codex-tools.cjs");
 
 const execFileAsync = promisify(execFile);
 const isMac = process.platform === "darwin";
+const remoteCodex = createRemoteCodexManager({ onEvent: handleRemoteCodexLifecycleEvent });
 let currentMode = "display";
 let mainWindow = null;
 let normalWindowBounds = null;
@@ -81,6 +84,8 @@ Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, 
 - For thumbnail creation/editing, always use the thumbnail board tools, never generic image_generate and never artifact_show with imageLoading. Generate exactly one 16:9 image per request. Never generate multiple unless Noah separately asks again. Every generate/edit request gets a permanent database number that never changes, like #18 then #19 then #20. Do not renumber visible grid positions. Show paginated 3x3 pages of the permanent numbers. Do not show a standalone fullscreen loading animation for thumbnails. Use Noah's wording literally: do not invent elaborate extra concepts, fake text, or extra thumbnail ideas. For edits, use the exact existing numbered/selected image as input and make only the requested change.
 - The thumbnail board persists across sessions. If Noah references thumbnail #N, trust that permanent number and call the matching thumbnail tool. Do not say you cannot see old thumbnails. Use thumbnail_grid to refresh state or change pages if needed.
 - When a thumbnail finishes generating or editing, do not announce it verbally. The UI updates silently.
+- For coding tasks on the configured Linux box, use remote_codex_start immediately. Remote Codex defaults to unrestricted full access on lizardbox.
+- Remote Codex jobs run in the background and Vector receives automatic lifecycle notifications. Use the active or latest task for natural follow-ups such as "how is it going?", "continue that", "commit that", "push it", and "stop it".
 - For sending messages, deleting data, buying things, account changes, sharing private information, or anything irreversible, summarize the action and ask for explicit confirmation before calling the modifying tool.
 - If a tool requires a confirmed field, set confirmed to true only after the user clearly confirms.
 - Typing text and pressing Enter/Return in computer use mode are allowed without extra approval when Noah asks you to type or send a prompt. Ask first before clicking controls or taking actions that delete, purchase, change settings, or expose private information.
@@ -157,6 +162,7 @@ const baseToolSpecs = [
       additionalProperties: false,
     },
   },
+  ...remoteCodexToolSpecs,
   {
     type: "function",
     name: "web_search",
@@ -690,7 +696,8 @@ ipcMain.handle("realtime:create-token", async (event) => {
     throw new Error("OPENAI_API_KEY is missing in .env.local");
   }
   const db = await readDb();
-  const instructions = `${RICKY_INSTRUCTIONS}\n\n${buildThumbnailBoardInstructions(db)}`;
+  const remoteCodexSkill = await readBundledSkill("remote-codex.md");
+  const instructions = `${RICKY_INSTRUCTIONS}\n\n${remoteCodexSkill}\n\n${buildThumbnailBoardInstructions(db)}`;
 
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
@@ -799,6 +806,9 @@ ipcMain.handle("tools:execute", async (event, toolCall) => {
     if (name === "project_cockpit_check") {
       return await projectCockpitCheck(args);
     }
+
+    const remoteCodexResult = await executeRemoteCodexTool(remoteCodex, name, args);
+    if (remoteCodexResult) return remoteCodexResult;
 
     if (name === "web_search") {
       return await webSearch(args);
@@ -1019,6 +1029,35 @@ async function projectCockpitCheck(args) {
   });
 }
 
+async function readBundledSkill(fileName) {
+  const skillPath = path.join(__dirname, "skills", fileName);
+  try {
+    return await fs.readFile(skillPath, "utf8");
+  } catch (error) {
+    return `# Remote Codex Skill\n\nRemote Codex skill failed to load: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+function handleRemoteCodexLifecycleEvent(event) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send("remote-codex:event", event);
+  }
+  if (!event?.announcement || !["completed", "attention", "failed", "timed_out", "cancelled"].includes(event.kind)) return;
+  if (!Notification.isSupported()) return;
+  const notification = new Notification({
+    title: event.kind === "attention" ? "Vector needs your input" : `Remote Codex: ${event.task?.project || "task"}`,
+    body: event.announcement,
+    silent: false,
+  });
+  notification.on("click", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  notification.show();
+}
+
 async function webSearch(args) {
   const exaKey = process.env.EXA_API_KEY;
   if (!exaKey) {
@@ -1137,6 +1176,13 @@ Here is what you can ask me to do.
 - "Show the repo state for Paw."
 - Inspect saved local repos for branch, dirty files, remote drift, docs, scripts, blockers, and next action.
 - Project Cockpit is read-only. It does not commit, push, install packages, or run release commands.
+
+## Remote Codex
+
+- Delegate coding work to Codex CLI on the configured Tailscale Linux box.
+- Tasks use full access by default and automatically inspect repository instructions, Git state, and verification commands.
+- Vector remembers the active task, announces completion or questions, retries one dropped connection, and supports natural follow-ups.
+- Say "commit that", "push it", or "open a PR" to continue the same Codex thread.
 
 ## Visuals
 
