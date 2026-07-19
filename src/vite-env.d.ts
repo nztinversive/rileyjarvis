@@ -13,6 +13,7 @@ export type RickyArtifact = {
     | "imageLoading"
     | "thumbnailBoard"
     | "projectCockpit"
+    | "codexReview"
     | "progress";
   content: string;
   language?: string;
@@ -52,7 +53,7 @@ export type RickyRemoteCodexTask = {
 };
 
 export type RickyRemoteCodexEvent = {
-  kind: "started" | "progress" | "retrying" | "completed" | "attention" | "failed" | "timed_out" | "cancelled";
+  kind: "started" | "progress" | "retrying" | "completed" | "attention" | "failed" | "timed_out" | "cancelled" | "review";
   at: string;
   task: RickyRemoteCodexTask;
   artifact: RickyArtifact;

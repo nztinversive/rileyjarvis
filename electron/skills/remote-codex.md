@@ -39,12 +39,14 @@ Vector receives automatic progress and terminal events. Completion, failure, tim
 
 ## Git and delivery follow-ups
 
-Treat explicit Git requests as authorized coding follow-ups and call `remote_codex_resume`:
+Explicit Git requests are authorized one-word verbs with dedicated tools. Call them immediately, without a task id unless Noah names one:
 
-- "Commit that" -> ask Codex to review the current diff, run relevant checks, and create a focused commit.
-- "Push it" -> ask Codex to verify the branch and push the relevant commit(s).
-- "Open a PR" -> ask Codex to push if necessary and open a pull request with an accurate title, summary, and verification section.
-- "Commit it, push it, and open a PR" -> send the whole sequence as one follow-up.
+- "Commit that" or "commit it" -> call `remote_codex_commit` (pass `message` only when Noah dictates one).
+- "Push it" -> call `remote_codex_push`.
+- "Open a PR" or "make a PR" -> call `remote_codex_pr` (pass `title` only when Noah dictates one).
+- "Commit it, push it, and open a PR" -> call `remote_codex_resume` with the whole sequence as one follow-up prompt.
+
+After a completed task, Vector automatically fetches the diff and shows a review artifact with files changed, additions, deletions, and the verification report. When Noah asks what changed, summarize from that review briefly.
 
 Do not invent commit, push, PR, publish, or deployment intent. Perform those actions only when Noah says them.
 

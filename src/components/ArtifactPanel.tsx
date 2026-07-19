@@ -221,6 +221,10 @@ function renderArtifact(artifact: RickyArtifact, mermaidState: MermaidState) {
     return <ProjectCockpit content={artifact.content} />;
   }
 
+  if (artifact.kind === "codexReview") {
+    return <CodexReview content={artifact.content} />;
+  }
+
   if (artifact.kind === "code") {
     return (
       <pre className="code-artifact">
@@ -375,6 +379,163 @@ function ProjectCockpit({ content }: { content: string }) {
       </div>
     </section>
   );
+}
+
+type CodexReviewData = {
+  project?: string;
+  target?: string;
+  status?: string;
+  requested?: string;
+  branch?: string;
+  head?: string;
+  tracking?: string;
+  filesChanged?: number | null;
+  insertions?: number;
+  deletions?: number;
+  statText?: string;
+  statusLines?: string[];
+  commits?: string[];
+  diff?: string;
+  reviewError?: string;
+  outcome?: string;
+  changedFiles?: string;
+  verification?: string;
+  gitActions?: string;
+  remainingIssues?: string;
+};
+
+function CodexReview({ content }: { content: string }) {
+  const review = parseCodexReview(content);
+  if (!review) return <pre className="text-artifact">{content}</pre>;
+
+  const reportSections = [
+    ["Outcome", review.outcome],
+    ["Verification", review.verification],
+    ["Git actions", review.gitActions],
+    ["Remaining issues", review.remainingIssues],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+
+  return (
+    <section className="codex-review">
+      <header className="project-cockpit-hero">
+        <div>
+          <span className={review.status === "completed" ? "project-state" : "project-state project-state-warn"}>
+            {review.status || "unknown"}
+          </span>
+          <h3>{review.project || "Codex task"}</h3>
+          <p>{review.requested || "No request recorded"}</p>
+        </div>
+        <dl>
+          <div className="cockpit-cell-wide">
+            <dt>Branch</dt>
+            <dd>{review.branch || "unknown"}</dd>
+            <small>
+              {review.head || "no head"}
+              {review.tracking ? ` · ${review.tracking}` : ""}
+            </small>
+          </div>
+          <div>
+            <dt>Files</dt>
+            <dd className="cockpit-num">{review.filesChanged ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Added</dt>
+            <dd className="cockpit-num">+{review.insertions ?? 0}</dd>
+          </div>
+          <div>
+            <dt>Removed</dt>
+            <dd className="cockpit-num">−{review.deletions ?? 0}</dd>
+          </div>
+        </dl>
+      </header>
+
+      {review.reviewError ? (
+        <article className="project-section project-section-blocked">
+          <h4>Review fetch failed</h4>
+          <p>{review.reviewError}</p>
+        </article>
+      ) : null}
+
+      {reportSections.length > 0 ? (
+        <div className="project-cockpit-grid">
+          {reportSections.map(([title, body]) => (
+            <article
+              className={title === "Remaining issues" ? "project-section project-section-blocked" : "project-section"}
+              key={title}
+            >
+              <h4>{title}</h4>
+              <p className="codex-review-body">{body}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {review.commits && review.commits.length > 0 ? (
+        <article className="project-section">
+          <h4>Recent commits</h4>
+          <ul>
+            {review.commits.map((line, index) => (
+              <li className="codex-review-mono" key={index}>
+                {line}
+              </li>
+            ))}
+          </ul>
+        </article>
+      ) : null}
+
+      {review.diff ? (
+        <article className="project-section codex-diff-card">
+          <h4>Diff{review.statText ? ` · ${review.statText.trim().split("\n").at(-1)}` : ""}</h4>
+          <pre className="codex-diff">
+            <code>{renderDiff(review.diff)}</code>
+          </pre>
+        </article>
+      ) : review.statusLines && review.statusLines.length > 0 ? (
+        <article className="project-section">
+          <h4>Worktree status</h4>
+          <ul>
+            {review.statusLines.map((line, index) => (
+              <li className="codex-review-mono" key={index}>
+                {line}
+              </li>
+            ))}
+          </ul>
+        </article>
+      ) : null}
+    </section>
+  );
+}
+
+function renderDiff(diff: string) {
+  return diff.split("\n").map((line, index) => {
+    const tone = line.startsWith("+++") || line.startsWith("---")
+      ? "codex-diff-file"
+      : line.startsWith("@@")
+        ? "codex-diff-hunk"
+        : line.startsWith("+")
+          ? "codex-diff-add"
+          : line.startsWith("-")
+            ? "codex-diff-del"
+            : line.startsWith("diff ")
+              ? "codex-diff-file"
+              : "";
+    return (
+      <span className={tone || undefined} key={index}>
+        {line}
+        {"\n"}
+      </span>
+    );
+  });
+}
+
+function parseCodexReview(content: string): CodexReviewData | null {
+  try {
+    const value = JSON.parse(content) as unknown;
+    if (!value || typeof value !== "object") return null;
+    return value as CodexReviewData;
+  } catch {
+    return null;
+  }
 }
 
 function parseProjectCockpit(content: string): ProjectCockpitData | null {

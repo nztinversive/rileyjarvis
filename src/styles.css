@@ -1465,7 +1465,8 @@ button:disabled {
   border-color: var(--red);
 }
 
-.project-cockpit dl {
+.project-cockpit dl,
+.codex-review dl {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
@@ -1473,11 +1474,13 @@ button:disabled {
   margin: 0;
 }
 
-.project-cockpit dl .cockpit-cell-wide {
+.project-cockpit dl .cockpit-cell-wide,
+.codex-review dl .cockpit-cell-wide {
   grid-column: 1 / -1;
 }
 
-.project-cockpit dl div {
+.project-cockpit dl div,
+.codex-review dl div {
   display: grid;
   min-width: 0;
   align-content: start;
@@ -1488,7 +1491,8 @@ button:disabled {
   border: 1px solid var(--line);
 }
 
-.project-cockpit dt {
+.project-cockpit dt,
+.codex-review dt {
   margin: 0;
   color: var(--ink-faint);
   font-family: var(--font-mono);
@@ -1498,7 +1502,8 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.project-cockpit dd {
+.project-cockpit dd,
+.codex-review dd {
   margin: 0;
   color: var(--ink);
   font-family: var(--font-mono);
@@ -1506,7 +1511,8 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.project-cockpit dd.cockpit-num {
+.project-cockpit dd.cockpit-num,
+.codex-review dd.cockpit-num {
   font-family: var(--font-display);
   font-size: 30px;
   font-weight: 800;
@@ -1574,6 +1580,59 @@ button:disabled {
 .project-section li {
   padding-left: 12px;
   border-left: 2px solid rgba(255, 95, 31, 0.5);
+}
+
+/* ---------- Codex review ---------- */
+
+.codex-review {
+  display: grid;
+  gap: 14px;
+}
+
+.codex-review-body {
+  white-space: pre-wrap;
+}
+
+.codex-review-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.codex-diff-card {
+  min-height: 0;
+}
+
+.codex-diff {
+  margin: 0;
+  max-height: 46vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card-soft);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.codex-diff-add {
+  color: var(--ok);
+}
+
+.codex-diff-del {
+  color: var(--red);
+}
+
+.codex-diff-hunk {
+  color: var(--orange-deep);
+  font-weight: 700;
+}
+
+.codex-diff-file {
+  color: var(--ink);
+  font-weight: 700;
 }
 
 /* ---------- Markdown artifact ---------- */

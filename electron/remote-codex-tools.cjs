@@ -67,6 +67,47 @@ const remoteCodexToolSpecs = [
   },
   {
     type: "function",
+    name: "remote_codex_commit",
+    description: "Commit the completed Remote Codex task's work on the remote host. Use immediately when the user says 'commit it', 'commit that', or similar after a Codex task.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Optional task id. Omit for the active or most recent task." },
+        project: { type: "string", description: "Optional project name to select its most recent task." },
+        message: { type: "string", description: "Optional commit message requested by the user. Omit to let Codex write one." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "remote_codex_push",
+    description: "Push the completed Remote Codex task's branch to its remote. Use immediately when the user says 'push it' or 'push that' after a Codex task.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Optional task id. Omit for the active or most recent task." },
+        project: { type: "string", description: "Optional project name to select its most recent task." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "remote_codex_pr",
+    description: "Open a pull request for the completed Remote Codex task's branch, pushing first if needed. Use immediately when the user says 'make a PR', 'open a pull request', or similar.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Optional task id. Omit for the active or most recent task." },
+        project: { type: "string", description: "Optional project name to select its most recent task." },
+        title: { type: "string", description: "Optional pull request title requested by the user. Omit to let Codex write one." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
     name: "remote_codex_cancel",
     description: "Cancel the active or selected Remote Codex task.",
     parameters: {
@@ -86,6 +127,9 @@ async function executeRemoteCodexTool(manager, name, args) {
   if (name === "remote_codex_task") return manager.status(args);
   if (name === "remote_codex_tasks") return manager.list();
   if (name === "remote_codex_resume") return manager.resume(args);
+  if (name === "remote_codex_commit") return manager.commit(args);
+  if (name === "remote_codex_push") return manager.push(args);
+  if (name === "remote_codex_pr") return manager.openPullRequest(args);
   if (name === "remote_codex_cancel") return manager.cancel(args);
   return null;
 }

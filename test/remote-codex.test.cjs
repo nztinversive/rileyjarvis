@@ -8,12 +8,15 @@ const test = require("node:test");
 const {
   buildOperatorPrompt,
   buildRemoteCodexCommand,
+  buildRemoteReviewCommand,
   createRemoteCodexManager,
   extractInputRequest,
+  extractReportSections,
   isRecoverableRemoteFailure,
   needsUserInput,
   normalizeAccess,
   parseRemoteRepos,
+  parseReviewOutput,
   remoteCodexConfig,
   resolveRemoteRepo,
   shellQuote,
@@ -96,6 +99,9 @@ test("the Realtime registration module exposes every Remote Codex tool", () => {
       "remote_codex_task",
       "remote_codex_tasks",
       "remote_codex_resume",
+      "remote_codex_commit",
+      "remote_codex_push",
+      "remote_codex_pr",
       "remote_codex_cancel",
     ],
   );
@@ -154,12 +160,36 @@ test("needs-input markers and recoverable remote failures are detected", () => {
   assert.equal(isRecoverableRemoteFailure(255, "Permission denied (publickey)"), false);
 });
 
-test("manager remembers the latest task and emits completion events", async () => {
+const reviewFixture = [
+  "::vector-review::branch",
+  "feature/fix-build",
+  "::vector-review::head",
+  "abc1234",
+  "::vector-review::track",
+  "## feature/fix-build...origin/feature/fix-build [ahead 1]",
+  "::vector-review::status",
+  " M src/app.ts",
+  "?? docs/notes.md",
+  "::vector-review::stat",
+  " src/app.ts | 12 ++++++------",
+  " 2 files changed, 8 insertions(+), 4 deletions(-)",
+  "::vector-review::log",
+  "abc1234 Fix the build",
+  "def5678 Previous work",
+  "::vector-review::diff",
+  "diff --git a/src/app.ts b/src/app.ts",
+  "@@ -1,3 +1,3 @@",
+  "-const broken = true;",
+  "+const broken = false;",
+].join("\n");
+
+function createCompletableManager(overrides = {}) {
   const lifecycleEvents = [];
-  let promptSeen = "";
-  let resolveCompletion;
-  const completed = new Promise((resolve) => {
-    resolveCompletion = resolve;
+  const spawnCalls = [];
+  const prompts = [];
+  let resolveReview;
+  const reviewed = new Promise((resolve) => {
+    resolveReview = resolve;
   });
   const manager = createRemoteCodexManager({
     env: {
@@ -167,36 +197,139 @@ test("manager remembers the latest task and emits completion events", async () =
       VECTOR_CODEX_REPOS: '{"RileyJarvis":"/home/lizardbox/repos/rileyjarvis"}',
       VECTOR_CODEX_DEFAULT_REPO: "RileyJarvis",
     },
-    spawnProcess: () =>
-      fakeCodexChild(
+    spawnProcess: (bin, args) => {
+      spawnCalls.push({ bin, remoteCommand: args.at(-1) });
+      return fakeCodexChild(
         [
           { type: "thread.started", thread_id: "thread-123" },
-          { type: "item.completed", item: { type: "agent_message", text: "Outcome\nBuild fixed.\nVerification\nTests pass." } },
+          {
+            type: "item.completed",
+            item: { type: "agent_message", text: "## Outcome\nBuild fixed.\n## Verification\nTests pass." },
+          },
         ],
-        (prompt) => {
-          promptSeen = prompt;
-        },
-      ),
+        (prompt) => prompts.push(prompt),
+      );
+    },
+    runFile: async () => ({ stdout: reviewFixture }),
     onEvent: (event) => {
       lifecycleEvents.push(event);
-      if (event.kind === "completed") resolveCompletion();
+      if (event.kind === "review") resolveReview();
     },
+    ...overrides,
   });
+  return { manager, lifecycleEvents, spawnCalls, prompts, reviewed };
+}
+
+test("manager remembers the latest task, emits completion, and collects a review", async () => {
+  const { manager, lifecycleEvents, prompts, reviewed } = createCompletableManager();
 
   const started = manager.start({ prompt: "Fix the build." });
   assert.equal(started.ok, true);
-  await completed;
+  await reviewed;
 
   const latest = manager.status({});
   assert.equal(latest.task.id, started.task.id);
   assert.equal(latest.task.status, "completed");
   assert.equal(latest.task.threadId, "thread-123");
-  assert.match(promptSeen, /# Vector Remote Coding Task/);
+  assert.match(prompts[0], /# Vector Remote Coding Task/);
   assert.deepEqual(
     lifecycleEvents.filter((event) => event.kind !== "progress").map((event) => event.kind),
-    ["started", "completed"],
+    ["started", "completed", "review"],
   );
-  assert.match(lifecycleEvents.at(-1).announcement, /Codex finished RileyJarvis/);
+
+  const reviewEvent = lifecycleEvents.at(-1);
+  assert.equal(reviewEvent.artifact.kind, "codexReview");
+  assert.match(reviewEvent.announcement, /Review ready for RileyJarvis: 2 files changed, 8 added, 4 removed/);
+  const review = JSON.parse(reviewEvent.artifact.content);
+  assert.equal(review.branch, "feature/fix-build");
+  assert.equal(review.filesChanged, 2);
+  assert.equal(review.insertions, 8);
+  assert.equal(review.deletions, 4);
+  assert.equal(review.outcome, "Build fixed.");
+  assert.equal(review.verification, "Tests pass.");
+  assert.match(review.diff, /const broken = false;/);
+  assert.equal(latest.artifact.kind, "codexReview");
+});
+
+test("review commands and parsing survive empty and partial git output", () => {
+  const command = buildRemoteReviewCommand("/srv/repo with 'quote'");
+  assert.match(command, /::vector-review::branch/);
+  assert.match(command, /git diff --stat HEAD/);
+  assert.match(command, /git status --porcelain/);
+  assert.match(command, /head -c 60000/);
+
+  const empty = parseReviewOutput("");
+  assert.equal(empty.filesChanged, 0);
+  assert.equal(empty.diff, "");
+
+  const untrackedOnly = parseReviewOutput("::vector-review::status\n?? new-file.md\n::vector-review::stat\n");
+  assert.equal(untrackedOnly.filesChanged, 1);
+  assert.deepEqual(untrackedOnly.statusLines, ["?? new-file.md"]);
+});
+
+test("report sections are extracted from Codex final messages", () => {
+  const sections = extractReportSections(
+    ["## Outcome", "Fixed the login bug.", "", "### Verification", "npm test passes.", "Git actions", "None."].join("\n"),
+  );
+  assert.equal(sections.outcome, "Fixed the login bug.");
+  assert.equal(sections.verification, "npm test passes.");
+  assert.equal(sections.gitActions, "None.");
+  assert.equal(sections.remainingIssues, "");
+});
+
+test("voice verbs resume the completed thread with canned instructions and full access", async () => {
+  const { manager, spawnCalls, prompts, reviewed } = createCompletableManager();
+  manager.start({ prompt: "Fix the build." });
+  await reviewed;
+
+  const committed = manager.commit({ message: "Fix login redirect" });
+  assert.equal(committed.ok, true);
+  assert.match(spawnCalls.at(-1).remoteCommand, /resume '.*thread-123/);
+  assert.match(spawnCalls.at(-1).remoteCommand, /--sandbox danger-full-access/);
+  assert.match(prompts.at(-1), /Commit the work from this thread now\./);
+  assert.match(prompts.at(-1), /Fix login redirect/);
+  assert.match(prompts.at(-1), /Do not push\./);
+});
+
+test("push and PR verbs carry their own guardrails", async () => {
+  const first = createCompletableManager();
+  first.manager.start({ prompt: "Fix the build." });
+  await first.reviewed;
+
+  first.manager.push({});
+  assert.match(first.prompts.at(-1), /Never force-push\./);
+
+  const second = createCompletableManager();
+  second.manager.start({ prompt: "Fix the build." });
+  await second.reviewed;
+
+  second.manager.openPullRequest({ title: "Fix login" });
+  assert.match(second.prompts.at(-1), /pull request/i);
+  assert.match(second.prompts.at(-1), /Fix login/);
+  assert.match(second.prompts.at(-1), /URL on its own line/);
+});
+
+test("verbs refuse when there is no completed resumable task", async () => {
+  const none = createCompletableManager();
+  const noTask = none.manager.commit({});
+  assert.equal(noTask.ok, false);
+  assert.match(noTask.error, /no Remote Codex task yet/i);
+
+  const running = createCompletableManager({
+    spawnProcess: () => {
+      const child = new EventEmitter();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = { end() {} };
+      child.kill = () => child.emit("close", null, "SIGTERM");
+      return child;
+    },
+  });
+  running.manager.start({ prompt: "Long task." });
+  const whileRunning = running.manager.push({});
+  assert.equal(whileRunning.ok, false);
+  assert.match(whileRunning.error, /still working/i);
+  running.manager.cancel({});
 });
 
 test("the execution router sends registered tool names to the manager", async () => {

@@ -253,6 +253,26 @@ function createRemoteCodexManager(options = {}) {
       activeTaskByProject.delete(projectKey(task.repo.name));
     }
     emitTaskEvent(task, task.status === "needs_input" ? "attention" : task.status);
+    if (task.status === "completed") void collectReview(task);
+  }
+
+  async function collectReview(task) {
+    const config = getConfig();
+    try {
+      const { stdout } = await runFile(
+        config.sshBin,
+        [...sshBaseArgs(), config.target, buildRemoteReviewCommand(task.repo.path)],
+        {
+          timeout: 20_000,
+          maxBuffer: 4 * 1024 * 1024,
+          windowsHide: true,
+        },
+      );
+      task.review = parseReviewOutput(stdout);
+    } catch (error) {
+      task.review = { error: remoteErrorMessage(error) };
+    }
+    emitTaskEvent(task, "review");
   }
 
   function emitProgress(task) {
@@ -292,7 +312,7 @@ function createRemoteCodexManager(options = {}) {
     return {
       ok: task.status === "running" || task.status === "completed" || task.status === "needs_input",
       task: publicTask(task),
-      artifact: remoteCodexTaskArtifact(task),
+      artifact: taskArtifact(task),
     };
   }
 
@@ -327,11 +347,54 @@ function createRemoteCodexManager(options = {}) {
     return { ok: true, task: publicTask(task), artifact: remoteCodexTaskArtifact(task) };
   }
 
+  function runVerb(args, promptLines) {
+    return resume({
+      taskId: args.taskId,
+      project: args.project,
+      prompt: promptLines.filter(Boolean).join(" "),
+      access: "full-access",
+    });
+  }
+
+  function commit(args = {}) {
+    const message = String(args.message || "").trim();
+    return runVerb(args, [
+      "Commit the work from this thread now.",
+      "Stage the files this task changed (leave unrelated dirty files alone when possible) and create one focused commit that follows the repository's commit conventions.",
+      message ? `Use this commit message: ${message}` : "Write a clear, conventional commit message yourself.",
+      "Do not push.",
+      "End your final response with the sections Outcome and Git actions, including the new commit hash.",
+    ]);
+  }
+
+  function push(args = {}) {
+    return runVerb(args, [
+      "Push the current branch for this thread's work to its remote now.",
+      "If the branch has no upstream, set one with push -u. Never force-push.",
+      "If the work is not committed yet, stop and say so instead of committing on your own.",
+      "End your final response with the sections Outcome and Git actions, naming the branch and remote you pushed to.",
+    ]);
+  }
+
+  function openPullRequest(args = {}) {
+    const title = String(args.title || "").trim();
+    return runVerb(args, [
+      "Open a pull request for this thread's work now.",
+      "Push the branch first if it has not been pushed. Use the gh CLI if available; if it is not, report that instead of improvising.",
+      title ? `Use this pull request title: ${title}` : "Write an accurate pull request title yourself.",
+      "Write a concise body with a summary and a verification section.",
+      "End your final response with the sections Outcome and Git actions, and put the pull request URL on its own line.",
+    ]);
+  }
+
   return {
     cancel,
+    commit,
     config: () => publicRemoteConfig(getConfig()),
     list,
+    openPullRequest,
     probe,
+    push,
     resume,
     start,
     status,
@@ -430,6 +493,76 @@ function buildRemoteCodexCommand(repoPath, access = "full-access", threadId = ""
     `exec codex -a never exec --json --color never --sandbox ${sandbox} -C ${shellQuote(repoPath)}${resume}`,
   ].join("; ");
   return `bash -lc ${shellQuote(command)}`;
+}
+
+function buildRemoteReviewCommand(repoPath) {
+  const section = (name, command) => `echo '::vector-review::${name}'; ${command} 2>/dev/null || true`;
+  const command = [
+    'export PATH="$HOME/.local/bin:$PATH"',
+    `cd -- ${shellQuote(repoPath)}`,
+    section("branch", "git branch --show-current"),
+    section("head", "git rev-parse --short HEAD"),
+    section("track", "git status -sb | head -n 1"),
+    section("status", "git status --porcelain"),
+    section("stat", "git diff --stat HEAD"),
+    section("log", "git log --oneline -5"),
+    section("diff", "git diff HEAD | head -c 60000"),
+  ].join("; ");
+  return `bash -lc ${shellQuote(command)}`;
+}
+
+function parseReviewOutput(stdout) {
+  const sections = {};
+  let current = "";
+  for (const line of String(stdout || "").split(/\r?\n/)) {
+    const marker = line.match(/^::vector-review::(\w+)\s*$/);
+    if (marker) {
+      current = marker[1];
+      sections[current] = [];
+      continue;
+    }
+    if (current) sections[current].push(line);
+  }
+  const text = (name) => (sections[name] || []).join("\n").trim();
+  const statText = text("stat");
+  const totals = statText.match(/(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/);
+  const statusLines = text("status").split("\n").filter(Boolean);
+  return {
+    branch: text("branch"),
+    head: text("head"),
+    tracking: text("track"),
+    statusLines,
+    statText,
+    filesChanged: totals ? Number(totals[1]) : statusLines.length,
+    insertions: totals?.[2] ? Number(totals[2]) : 0,
+    deletions: totals?.[3] ? Number(totals[3]) : 0,
+    commits: text("log").split("\n").filter(Boolean),
+    diff: text("diff"),
+  };
+}
+
+function extractReportSections(message) {
+  const names = ["Outcome", "Changed files", "Verification", "Git actions", "Remaining issues"];
+  const heading = new RegExp(`^\\s{0,3}(?:#{1,6}\\s*|\\*\\*)?(${names.join("|")})(?:\\*\\*)?\\s*:?\\s*$`, "i");
+  const sections = {};
+  let current = "";
+  for (const line of String(message || "").split(/\r?\n/)) {
+    const match = line.match(heading);
+    if (match) {
+      current = match[1].toLowerCase();
+      sections[current] = [];
+      continue;
+    }
+    if (current) sections[current].push(line);
+  }
+  const text = (name) => (sections[name.toLowerCase()] || []).join("\n").trim();
+  return {
+    outcome: text("Outcome"),
+    changedFiles: text("Changed files"),
+    verification: text("Verification"),
+    gitActions: text("Git actions"),
+    remainingIssues: text("Remaining issues"),
+  };
 }
 
 function buildRemoteProbeCommand(repoPath) {
@@ -547,6 +680,41 @@ function publicTask(task) {
   };
 }
 
+function taskArtifact(task) {
+  return task.review ? remoteCodexReviewArtifact(task) : remoteCodexTaskArtifact(task);
+}
+
+function remoteCodexReviewArtifact(task) {
+  const review = task.review || {};
+  const report = extractReportSections(task.finalMessage);
+  return {
+    title: `Review: ${task.repo.name}`,
+    kind: "codexReview",
+    content: JSON.stringify({
+      project: task.repo.name,
+      target: task.target,
+      status: task.status,
+      requested: task.requestedPrompt || "",
+      branch: review.branch || "",
+      head: review.head || "",
+      tracking: review.tracking || "",
+      filesChanged: review.filesChanged ?? null,
+      insertions: review.insertions ?? 0,
+      deletions: review.deletions ?? 0,
+      statText: review.statText || "",
+      statusLines: review.statusLines || [],
+      commits: review.commits || [],
+      diff: review.diff || "",
+      reviewError: review.error || "",
+      outcome: report.outcome || conciseResult(task.finalMessage),
+      changedFiles: report.changedFiles,
+      verification: report.verification,
+      gitActions: report.gitActions,
+      remainingIssues: report.remainingIssues,
+    }),
+  };
+}
+
 function remoteCodexTaskArtifact(task) {
   const final = task.finalMessage ? `\n## Result\n\n${task.finalMessage}` : "";
   const errors =
@@ -617,12 +785,17 @@ function remoteCodexLifecycleEvent(task, kind) {
     announcement = `Codex timed out on ${task.repo.name}.`;
   } else if (kind === "cancelled") {
     announcement = `The Codex task for ${task.repo.name} was cancelled.`;
+  } else if (kind === "review") {
+    const review = task.review || {};
+    if (!review.error && (review.filesChanged || review.statusLines?.length)) {
+      announcement = `Review ready for ${task.repo.name}: ${review.filesChanged} file${review.filesChanged === 1 ? "" : "s"} changed, ${review.insertions} added, ${review.deletions} removed. Say commit it, push it, or make a PR.`;
+    }
   }
   return {
     kind,
     at: new Date().toISOString(),
     task: publicState,
-    artifact: remoteCodexTaskArtifact(task),
+    artifact: taskArtifact(task),
     announcement,
   };
 }
@@ -687,12 +860,15 @@ module.exports = {
   buildOperatorPrompt,
   buildRemoteCodexCommand,
   buildRemoteProbeCommand,
+  buildRemoteReviewCommand,
   createRemoteCodexManager,
   extractInputRequest,
+  extractReportSections,
   isRecoverableRemoteFailure,
   needsUserInput,
   normalizeAccess,
   parseRemoteRepos,
+  parseReviewOutput,
   remoteCodexConfig,
   resolveRemoteRepo,
   shellQuote,
