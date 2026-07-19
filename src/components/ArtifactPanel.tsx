@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Zap } from "lucide-react";
 import mermaid from "mermaid";
 import type { RickyArtifact } from "../vite-env";
 
@@ -78,7 +79,7 @@ type ProjectCockpitData = {
 
 mermaid.initialize({
   startOnLoad: false,
-  theme: "dark",
+  theme: "neutral",
   securityLevel: "strict",
 });
 
@@ -132,13 +133,22 @@ export function ArtifactPanel({ artifact, visible, fullscreen, onToggleVisible, 
         <div>
           <span className="eyebrow">Artifacts</span>
           <h2>{artifact?.title || "Ready"}</h2>
+          <small className="artifact-serial">VCT-01 // LOCAL OPERATOR // 127.0.0.1</small>
         </div>
         <div className="artifact-actions">
           <button onClick={onToggleFullscreen}>{fullscreen ? "Window" : "Fullscreen"}</button>
           <button onClick={onToggleVisible}>Hide</button>
         </div>
       </header>
-      <div className="artifact-body">{artifact ? renderArtifact(artifact, mermaidState) : <EmptyArtifact />}</div>
+      <div className="artifact-body">
+        {artifact ? (
+          <div className="artifact-arrival" key={`${artifact.kind}:${artifact.title}:${artifact.content.length}`}>
+            {renderArtifact(artifact, mermaidState)}
+          </div>
+        ) : (
+          <EmptyArtifact />
+        )}
+      </div>
     </aside>
   );
 }
@@ -146,7 +156,14 @@ export function ArtifactPanel({ artifact, visible, fullscreen, onToggleVisible, 
 function EmptyArtifact() {
   return (
     <div className="empty-artifact">
-      <p>Ask Vector to show web results, charts, notes, records, code, images, or progress here.</p>
+      <div className="empty-artifact-grid" aria-hidden="true" />
+      <div className="empty-artifact-inner">
+        <span className="empty-artifact-chip" aria-hidden="true">
+          <Zap size={16} strokeWidth={2.4} />
+        </span>
+        <strong className="empty-artifact-code">Awaiting signal</strong>
+        <p>Ask Vector to show web results, charts, notes, records, code, images, or progress here.</p>
+      </div>
     </div>
   );
 }
@@ -320,17 +337,22 @@ function ProjectCockpit({ content }: { content: string }) {
           <p>{report.path || "No path reported"}</p>
         </div>
         <dl>
-          <div>
+          <div className="cockpit-cell-wide">
             <dt>Branch</dt>
             <dd>{report.git?.branch || "unknown"}</dd>
-          </div>
-          <div>
-            <dt>HEAD</dt>
-            <dd>{report.git?.head || "unknown"}</dd>
+            <small>{report.git?.head || "no head"}</small>
           </div>
           <div>
             <dt>Dirty</dt>
-            <dd>{report.git?.dirtyCount ?? 0}</dd>
+            <dd className="cockpit-num">{report.git?.dirtyCount ?? 0}</dd>
+          </div>
+          <div>
+            <dt>Ahead</dt>
+            <dd className="cockpit-num">{report.git?.ahead ?? 0}</dd>
+          </div>
+          <div>
+            <dt>Behind</dt>
+            <dd className="cockpit-num">{report.git?.behind ?? 0}</dd>
           </div>
         </dl>
       </header>

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, PanelRight, Send } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, PanelRight, Send, Zap } from "lucide-react";
 import { ArtifactPanel } from "./components/ArtifactPanel";
 import { VectorOrb } from "./components/VectorOrb";
 import { newEntry, RickyRealtimeClient, type MouthShape, type RickyConnectionState, type RickyMood, type TranscriptEntry } from "./lib/realtime";
@@ -24,9 +24,27 @@ export default function App() {
   ]);
   const [status, setStatus] = useState(electronBridgeAvailable ? "Idle" : missingElectronBridgeMessage);
   const [textPrompt, setTextPrompt] = useState("");
+  const [uptime, setUptime] = useState("STANDBY");
   const clientRef = useRef<RickyRealtimeClient | null>(null);
 
   const isConnected = connectionState === "connected";
+
+  useEffect(() => {
+    if (!isConnected) {
+      setUptime("STANDBY");
+      return;
+    }
+    const startedAt = Date.now();
+    const tick = () => {
+      const seconds = Math.floor((Date.now() - startedAt) / 1000);
+      const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+      const ss = String(seconds % 60).padStart(2, "0");
+      setUptime(`${mm}:${ss}`);
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [isConnected]);
   const statusTone = connectionState === "error" || mood === "error" ? "blocked" : mood === "working" || mood === "thinking" ? "active" : "idle";
 
   useEffect(() => {
@@ -142,19 +160,61 @@ export default function App() {
       <div className="window-drag-strip" aria-hidden="true" />
       <div className="window-drag-left-zone" aria-hidden="true" />
       <section className="companion-window">
-        <header className="operator-header">
-          <div>
-            <span>Vector</span>
-            <small>Display mode</small>
+        <header className="hub-bar">
+          <div className="hub-brand">
+            <span className="hub-badge" aria-hidden="true">
+              <Zap size={13} strokeWidth={2.6} />
+            </span>
+            <div>
+              <span>Vector Command Hub</span>
+              <small>Realtime voice operator</small>
+            </div>
           </div>
-          <p className={`operator-state operator-state-${statusTone}`}>{mood}</p>
+          <p className={`hub-state hub-state-${statusTone}`}>{mood}</p>
         </header>
+
+        <div className="hero-plate">
+          <span className={`hero-tag hero-tag-${statusTone}`}>
+            <i aria-hidden="true" />
+            Unit VCT-01
+          </span>
+          <h1 className="hero-name">
+            <span className="hero-letters" aria-label="Vector">
+              {"Vector".split("").map((letter, index) => (
+                <span key={index} aria-hidden="true" style={{ "--l": index } as CSSProperties}>
+                  {letter}
+                </span>
+              ))}
+            </span>
+            <b aria-hidden="true">◆</b>
+          </h1>
+          <p className="hero-role">The Desktop Operator</p>
+        </div>
 
         <section className="orb-stage">
           <VectorOrb mood={mood} mouthShape={mouthShape} />
+          <div className="orb-plinth" aria-hidden="true" style={{ "--audio-open": mouthShape.open.toFixed(3) } as CSSProperties} />
           <div className="orb-status">
             <span>{connectionState}</span>
             <p>{status}</p>
+            <dl className="status-stats">
+              <div>
+                <dt>Uptime</dt>
+                <dd>{uptime}</dd>
+              </div>
+              <div>
+                <dt>Mode</dt>
+                <dd>{mode}</dd>
+              </div>
+              <div>
+                <dt>Events</dt>
+                <dd>{transcript.length}</dd>
+              </div>
+              <div>
+                <dt>Model</dt>
+                <dd>RT-2.1M</dd>
+              </div>
+            </dl>
           </div>
         </section>
 
@@ -176,56 +236,75 @@ export default function App() {
             </section>
           ) : null}
 
-          <section className="control-strip">
+          <section className="control-dock">
             <button
-              className={isConnected ? "simple-button active" : "simple-button"}
+              className={isConnected ? "deploy-button deploy-live" : "deploy-button"}
               onClick={isConnected ? disconnect : connect}
               disabled={connectionState === "connecting"}
               aria-label={isConnected ? "Disconnect voice" : "Connect voice"}
               title={isConnected ? "Disconnect voice" : "Connect voice"}
             >
-              {isConnected ? <MicOff size={16} /> : <Mic size={16} />}
+              {isConnected ? <MicOff size={15} strokeWidth={2.4} /> : <Mic size={15} strokeWidth={2.4} />}
+              <span>{connectionState === "connecting" ? "Linking" : isConnected ? "Disconnect" : "Connect"}</span>
+              <em aria-hidden="true">{isConnected ? "■" : "»"}</em>
             </button>
-            <button
-              className={showTypeInput ? "simple-button active" : "simple-button"}
-              onClick={() => setShowTypeInput((value) => !value)}
-              aria-label="Type to Vector"
-              title="Type to Vector"
-            >
-              <Keyboard size={16} />
-            </button>
-            <button
-              className={mode === "display" ? "simple-button active" : "simple-button"}
-              onClick={() => void switchMode("display")}
-              aria-label="Display mode"
-              title="Display mode"
-            >
-              <PanelRight size={16} />
-            </button>
-            <button
-              className="simple-button danger"
-              onClick={() => void switchMode("computer")}
-              aria-label="Computer use mode"
-              title="Computer use mode"
-            >
-              <MonitorCog size={16} />
-            </button>
-            <button
-              className={artifactVisible ? "simple-button active" : "simple-button"}
-              onClick={() => setArtifactVisible((value) => !value)}
-              aria-label="Toggle artifacts"
-              title="Toggle artifacts"
-            >
-              <BrainCircuit size={16} />
-            </button>
-            <button
-              className={showLog ? "simple-button active" : "simple-button"}
-              onClick={() => setShowLog((value) => !value)}
-              aria-label="Toggle live log"
-              title="Toggle live log"
-            >
-              <History size={16} />
-            </button>
+            <div className="ability-row">
+              <button
+                className={showTypeInput ? "ability-card active" : "ability-card"}
+                onClick={() => setShowTypeInput((value) => !value)}
+                aria-label="Type to Vector"
+                title="Type to Vector"
+              >
+                <span className="ability-icon">
+                  <Keyboard size={15} />
+                </span>
+                <small>Type</small>
+              </button>
+              <button
+                className={mode === "display" ? "ability-card active" : "ability-card"}
+                onClick={() => void switchMode("display")}
+                aria-label="Display mode"
+                title="Display mode"
+              >
+                <span className="ability-icon">
+                  <PanelRight size={15} />
+                </span>
+                <small>Display</small>
+              </button>
+              <button
+                className="ability-card danger"
+                onClick={() => void switchMode("computer")}
+                aria-label="Computer use mode"
+                title="Computer use mode"
+              >
+                <span className="ability-icon">
+                  <MonitorCog size={15} />
+                </span>
+                <small>Computer</small>
+              </button>
+              <button
+                className={artifactVisible ? "ability-card active" : "ability-card"}
+                onClick={() => setArtifactVisible((value) => !value)}
+                aria-label="Toggle artifacts"
+                title="Toggle artifacts"
+              >
+                <span className="ability-icon">
+                  <BrainCircuit size={15} />
+                </span>
+                <small>Artifacts</small>
+              </button>
+              <button
+                className={showLog ? "ability-card active" : "ability-card"}
+                onClick={() => setShowLog((value) => !value)}
+                aria-label="Toggle live log"
+                title="Toggle live log"
+              >
+                <span className="ability-icon">
+                  <History size={15} />
+                </span>
+                <small>Log</small>
+              </button>
+            </div>
           </section>
         </footer>
 
