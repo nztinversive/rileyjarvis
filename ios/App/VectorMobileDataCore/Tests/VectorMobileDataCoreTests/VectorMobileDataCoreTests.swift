@@ -60,12 +60,21 @@ final class VectorMobileDataCoreTests: XCTestCase {
         let store = VectorMobileDataStore(directoryURL: directory)
         let snapshot = try store.snapshot()
         XCTAssertTrue(snapshot.document.notes.isEmpty)
-        XCTAssertNotNil(snapshot.recoveredCorruptStore)
+        let recoveryName = try XCTUnwrap(snapshot.recoveredCorruptStore)
         let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         XCTAssertTrue(files.contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
-        XCTAssertEqual(try String(contentsOf: storeURL, encoding: .utf8), "{broken")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: storeURL.path))
+        let recoveryURL = directory.appendingPathComponent(recoveryName)
+        XCTAssertEqual(try String(contentsOf: recoveryURL, encoding: .utf8), "{broken")
+        let relaunched = try VectorMobileDataStore(directoryURL: directory).snapshot()
+        XCTAssertNil(relaunched.recoveredCorruptStore)
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasPrefix("vector-mobile-data.corrupt-") }.count,
+            1
+        )
         _ = try store.addNote(text: "Recovered", tags: [])
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(contentsOf: storeURL)))
+        XCTAssertEqual(try String(contentsOf: recoveryURL, encoding: .utf8), "{broken")
     }
 
     func testMalformedLanguageAndNestedRecordKeysUseRecoveryPath() throws {
@@ -91,6 +100,19 @@ final class VectorMobileDataCoreTests: XCTestCase {
         let store = VectorMobileDataStore(directoryURL: directory)
         XCTAssertThrowsError(try store.addNote(text: String(repeating: "a", count: VectorMobileDataStore.maxTextBytes + 1), tags: []))
         XCTAssertThrowsError(try store.saveArtifact(id: nil, title: "Large", kind: "text", content: String(repeating: "a", count: VectorMobileDataStore.maxArtifactBytes + 1), language: nil))
+    }
+
+    func testRecordSizeUsesCompactSharedContractEncoding() throws {
+        let store = VectorMobileDataStore(directoryURL: directory)
+        let accepted = Dictionary(uniqueKeysWithValues: (0..<100).map {
+            (String(format: "f%02d", $0), VectorJSONValue.string(String(repeating: "x", count: 150)))
+        })
+        XCTAssertNoThrow(try store.createRecord(collection: "tasks", title: "Compact", fields: accepted))
+
+        let rejected = Dictionary(uniqueKeysWithValues: (0..<100).map {
+            (String(format: "f%02d", $0), VectorJSONValue.string(String(repeating: "x", count: 155)))
+        })
+        XCTAssertThrowsError(try store.createRecord(collection: "tasks", title: "Too large", fields: rejected))
     }
 
     func testSharePayloadUsesPredictableSafeFilenameAndSelectedContentOnly() throws {

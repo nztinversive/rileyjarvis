@@ -134,7 +134,8 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   assert.match(core, /schemaVersion/);
   assert.match(core, /maxFileBytes/);
   assert.match(core, /corrupt-/);
-  assert.match(core, /copyItem\(at: storeURL, to: backup\)/);
+  assert.match(core, /moveItem\(at: storeURL, to: backup\)/);
+  assert.match(core, /contractEncoder\.encode\(fields\)/);
   assert.doesNotMatch(core + plugin, /UserDefaults|Preferences|localStorage/);
   assert.match(plugin, /jsName = "VectorMobileData"/);
   assert.match(plugin, /CAPPluginMethod\(name: "createNote"/);

@@ -143,6 +143,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     private let directoryURL: URL
     private let storeURL: URL
     private let encoder: JSONEncoder
+    private let contractEncoder: JSONEncoder
     private let decoder = JSONDecoder()
     private var loaded: VectorMobileDataDocument?
     private var recoveredCorruptStore: String?
@@ -153,6 +154,9 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         self.encoder = encoder
+        let contractEncoder = JSONEncoder()
+        contractEncoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        self.contractEncoder = contractEncoder
     }
 
     public func snapshot() throws -> VectorMobileDataSnapshot {
@@ -499,7 +503,10 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         let backup = directoryURL.appendingPathComponent("vector-mobile-data.corrupt-\(formatter.string(from: Date()))-\(UUID().uuidString.lowercased()).json")
-        try FileManager.default.copyItem(at: storeURL, to: backup)
+#if os(iOS)
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: storeURL.path)
+#endif
+        try FileManager.default.moveItem(at: storeURL, to: backup)
         recoveredCorruptStore = backup.lastPathComponent
         let document = VectorMobileDataDocument()
         loaded = document
@@ -573,7 +580,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
 
     private func validateFields(_ fields: [String: VectorJSONValue]) throws {
         guard fields.count <= 100 else { throw VectorMobileDataError.invalid("Fields are too large.") }
-        let data = try encoder.encode(fields)
+        let data = try contractEncoder.encode(fields)
         guard data.count <= Self.maxRecordBytes else { throw VectorMobileDataError.invalid("Fields are too large.") }
         for key in fields.keys {
             try validateFieldName(key)
