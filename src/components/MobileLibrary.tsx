@@ -208,13 +208,14 @@ function RecordsLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDel
 
   useEffect(() => {
     if (collections.length && !collections.includes(browseCollection)) setBrowseCollection(collections[0]);
+    else if (!collections.length && browseCollection !== "general") setBrowseCollection("general");
   }, [browseCollection, collections]);
   return (
     <section aria-labelledby="mobile-records-heading">
       <div className="mobile-library-heading"><div><span>Structured and searchable</span><h2 id="mobile-records-heading">Records</h2></div><b>{items.length}/{mobileDataLimits.maxRecords}</b></div>
       <div className="mobile-library-view-switcher" role="group" aria-label="Record view">
         <button type="button" className={mode === "browse" ? "active" : ""} aria-pressed={mode === "browse"} onClick={() => setMode("browse")}><Library size={17} />Browse</button>
-        <button type="button" className={mode === "new" ? "active" : ""} aria-pressed={mode === "new"} onClick={() => setMode("new")}><Plus size={17} />New record</button>
+        <button type="button" className={mode === "new" ? "active" : ""} aria-pressed={mode === "new"} onClick={() => { if (collections.length) setNewCollection(browseCollection); setMode("new"); }}><Plus size={17} />New record</button>
       </div>
       {mode === "new" ? (
         <form className="mobile-library-form" onSubmit={(event) => { event.preventDefault(); try { const parsed = JSON.parse(dataText); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); setFormError(""); void onCreate(newCollection, title, parsed).then((saved) => { if (saved) { setBrowseCollection(newCollection.trim()); setTitle(""); setDataText("{}"); setMode("browse"); } }); } catch { setFormError("Structured data must be a JSON object within the local size limit."); } }}>

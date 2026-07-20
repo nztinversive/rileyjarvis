@@ -210,7 +210,8 @@ export function recordMatchesSearch(record: VectorMobileRecord, collection: stri
 }
 
 export function recordCollectionNames(records: VectorMobileRecord[]): string[] {
-  return [...new Set(records.map((record) => record.collection))].sort((left, right) => left.localeCompare(right));
+  return [...new Set(records.map((record) => record.collection))]
+    .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
 }
 
 export function stableSearchText(record: VectorMobileRecord): string {
