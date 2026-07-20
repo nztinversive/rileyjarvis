@@ -58,6 +58,17 @@ test("the mobile conversation control names every connection and listening state
   assert.equal(connectionControlPresentation("error", "error").detail, "Connection failed");
 });
 
+test("the iOS voice surface remains explicitly labeled as hardware-unverified preview", () => {
+  const app = read("src/App.tsx");
+  const mobile = read("src/components/MobileAppShell.tsx");
+
+  assert.match(app, /Voice preview: lifecycle readiness is Simulator-verified/);
+  assert.match(app, /iPhone microphone and audio hardware remain unverified/);
+  assert.match(mobile, /Mobile companion · Voice preview/);
+  assert.match(mobile, /aria-label="Voice preview status"/);
+  assert.match(mobile, /Simulator-verified only; iPhone microphone and audio hardware are not yet validated/);
+});
+
 test("typed prompts stay intact until a conversation is connected", () => {
   const app = read("src/App.tsx");
   const mobile = read("src/components/MobileAppShell.tsx");
@@ -106,6 +117,21 @@ test("Realtime connection failures remain in an explicit error state until retry
   client.disconnect();
   assert.equal(states.at(-1), "idle");
   assert.equal(moods.at(-1), "idle");
+});
+
+test("native lifecycle and audio events disconnect without automatic microphone reacquisition", () => {
+  const app = read("src/App.tsx");
+
+  assert.match(app, /vectorPlatform\.appLifecycle\.subscribe/);
+  assert.match(app, /vectorPlatform\.voiceSession\.subscribe/);
+  assert.match(app, /state === "error" && clientRef\.current === client/);
+  assert.match(app, /if \(event\.shouldDisconnect && clientRef\.current\)/);
+  assert.match(app, /clientRef\.current\.disconnect\(\)/);
+  assert.match(app, /clientRef\.current = null/);
+  assert.doesNotMatch(
+    app.slice(app.indexOf("vectorPlatform.voiceSession.subscribe"), app.indexOf("function toggleTheme")),
+    /client\.connect\(|\bconnect\(\)/,
+  );
 });
 
 test("native presentation selection is capability-driven and desktop-only modes stay out of mobile UI", () => {

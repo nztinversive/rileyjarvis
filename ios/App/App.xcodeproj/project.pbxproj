@@ -13,6 +13,9 @@
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		A13C30012E30000100C0DE01 /* VectorSecureStoragePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C30002E30000100C0DE01 /* VectorSecureStoragePlugin.swift */; };
 		A13C30032E30000100C0DE01 /* VectorBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C30022E30000100C0DE01 /* VectorBridgeViewController.swift */; };
+		A13C30112E30000100C0DE01 /* VectorAudioSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C30102E30000100C0DE01 /* VectorAudioSessionPlugin.swift */; };
+		A13C30132E30000100C0DE01 /* VectorWebViewUIDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C30122E30000100C0DE01 /* VectorWebViewUIDelegate.swift */; };
+		A13C30152E30000100C0DE01 /* VectorDebugCredentialProvisioner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C30142E30000100C0DE01 /* VectorDebugCredentialProvisioner.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -26,6 +29,9 @@
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A13C30002E30000100C0DE01 /* VectorSecureStoragePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorSecureStoragePlugin.swift; sourceTree = "<group>"; };
 		A13C30022E30000100C0DE01 /* VectorBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorBridgeViewController.swift; sourceTree = "<group>"; };
+		A13C30102E30000100C0DE01 /* VectorAudioSessionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorAudioSessionPlugin.swift; sourceTree = "<group>"; };
+		A13C30122E30000100C0DE01 /* VectorWebViewUIDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorWebViewUIDelegate.swift; sourceTree = "<group>"; };
+		A13C30142E30000100C0DE01 /* VectorDebugCredentialProvisioner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorDebugCredentialProvisioner.swift; sourceTree = "<group>"; };
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -70,6 +76,9 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				A13C30002E30000100C0DE01 /* VectorSecureStoragePlugin.swift */,
 				A13C30022E30000100C0DE01 /* VectorBridgeViewController.swift */,
+				A13C30102E30000100C0DE01 /* VectorAudioSessionPlugin.swift */,
+				A13C30122E30000100C0DE01 /* VectorWebViewUIDelegate.swift */,
+				A13C30142E30000100C0DE01 /* VectorDebugCredentialProvisioner.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -164,6 +173,9 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				A13C30012E30000100C0DE01 /* VectorSecureStoragePlugin.swift in Sources */,
 				A13C30032E30000100C0DE01 /* VectorBridgeViewController.swift in Sources */,
+				A13C30112E30000100C0DE01 /* VectorAudioSessionPlugin.swift in Sources */,
+				A13C30132E30000100C0DE01 /* VectorWebViewUIDelegate.swift in Sources */,
+				A13C30152E30000100C0DE01 /* VectorDebugCredentialProvisioner.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

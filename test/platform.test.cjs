@@ -191,6 +191,32 @@ test("the iOS adapter bounds requests and never exposes underlying error or toke
   assert.doesNotMatch(error.message, /never-print|transport detail/);
 });
 
+test("the iOS adapter propagates stale-attempt cancellation into the backend request", async () => {
+  const caller = new AbortController();
+  let requestSignal;
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: secureStorageWith("never-print-bootstrap-token"),
+    fetchImpl(_url, init) {
+      requestSignal = init.signal;
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(new Error("private cancelled request detail")));
+      });
+    },
+  });
+
+  const request = platform.createRealtimeCredential({ signal: caller.signal });
+  await new Promise((resolve) => setImmediate(resolve));
+  caller.abort();
+  const error = await request.then(
+    () => null,
+    (value) => value,
+  );
+
+  assert.equal(requestSignal.aborted, true);
+  assert.doesNotMatch(error.message, /never-print|private cancelled/);
+});
+
 test("the iOS adapter exposes only mobile tools and safely rejects desktop tools and local images", async () => {
   const platform = createIOSVectorPlatform({
     backendBaseUrl: "https://vector.example",
@@ -240,6 +266,31 @@ test("the iOS adapter opens only HTTPS links through its native browser boundary
   await platform.openExternalUrl("https://example.com/path");
   await assert.rejects(platform.openExternalUrl("file:///Users/example/secret"), /secure web links/);
   assert.deepEqual(opened, ["https://example.com/path"]);
+});
+
+test("the iOS adapter exposes the injected native voice-session lifecycle without widening desktop capabilities", async () => {
+  const events = [];
+  const voiceSession = {
+    async prepare() {
+      return { route: "built-in speaker" };
+    },
+    async deactivate() {},
+    subscribe(callback) {
+      events.push(callback);
+      return () => events.push("unsubscribed");
+    },
+  };
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: secureStorageWith("bootstrap-credential"),
+    voiceSession,
+    async fetchImpl() {
+      throw new Error("not used");
+    },
+  });
+
+  assert.equal(platform.voiceSession, voiceSession);
+  assert.equal(platform.remoteCodex, undefined);
 });
 
 test("shared renderer modules do not access the legacy Electron bridge directly", () => {

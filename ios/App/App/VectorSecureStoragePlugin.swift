@@ -2,22 +2,17 @@ import Capacitor
 import Foundation
 import Security
 
-@objc(VectorSecureStoragePlugin)
-public final class VectorSecureStoragePlugin: CAPPlugin, CAPBridgedPlugin {
-    public let identifier = "VectorSecureStoragePlugin"
-    public let jsName = "VectorSecureStorage"
-    public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "get", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "set", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "delete", returnType: CAPPluginReturnPromise)
-    ]
+enum VectorSecureCredentialStoreError: Error {
+    case invalidValue
+    case readFailed
+    case writeFailed
+    case deleteFailed
+}
 
-    private let account = "bootstrap-session-credential"
+enum VectorSecureCredentialStore {
+    private static let account = "bootstrap-session-credential"
 
-    // This narrow bootstrap credential boundary is temporary. A later account phase
-    // replaces the provisioning flow with Sign in with Apple without changing how
-    // the Phase 3 adapter asks native secure storage for its bearer credential.
-    private var baseQuery: [CFString: Any] {
+    private static var baseQuery: [CFString: Any] {
         [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: Bundle.main.bundleIdentifier ?? "com.rileyjarvis.vector",
@@ -25,7 +20,7 @@ public final class VectorSecureStoragePlugin: CAPPlugin, CAPBridgedPlugin {
         ]
     }
 
-    @objc public func get(_ call: CAPPluginCall) {
+    static func read() throws -> String? {
         var query = baseQuery
         query[kSecReturnData] = true
         query[kSecMatchLimit] = kSecMatchLimitOne
@@ -33,25 +28,22 @@ public final class VectorSecureStoragePlugin: CAPPlugin, CAPBridgedPlugin {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound {
-            call.resolve(["value": NSNull()])
-            return
+            return nil
         }
         guard status == errSecSuccess,
               let data = item as? Data,
               let value = String(data: data, encoding: .utf8) else {
-            call.reject("Secure credential storage is unavailable.", "SECURE_STORAGE_READ_FAILED")
-            return
+            throw VectorSecureCredentialStoreError.readFailed
         }
-        call.resolve(["value": value])
+        return value
     }
 
-    @objc public func set(_ call: CAPPluginCall) {
-        guard let value = call.getString("value"),
-              !value.isEmpty,
+#if DEBUG
+    static func write(_ value: String) throws {
+        guard !value.isEmpty,
               value.lengthOfBytes(using: .utf8) <= 4096,
               let data = value.data(using: .utf8) else {
-            call.reject("A valid bootstrap credential is required.", "SECURE_STORAGE_INVALID_VALUE")
-            return
+            throw VectorSecureCredentialStoreError.invalidValue
         }
 
         let updates: [CFString: Any] = [
@@ -60,29 +52,54 @@ public final class VectorSecureStoragePlugin: CAPPlugin, CAPBridgedPlugin {
         ]
         let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updates as CFDictionary)
         if updateStatus == errSecSuccess {
-            call.resolve()
             return
         }
         guard updateStatus == errSecItemNotFound else {
-            call.reject("Secure credential storage is unavailable.", "SECURE_STORAGE_WRITE_FAILED")
-            return
+            throw VectorSecureCredentialStoreError.writeFailed
         }
 
         var item = baseQuery
         updates.forEach { item[$0.key] = $0.value }
         guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else {
-            call.reject("Secure credential storage is unavailable.", "SECURE_STORAGE_WRITE_FAILED")
-            return
+            throw VectorSecureCredentialStoreError.writeFailed
         }
-        call.resolve()
+    }
+#endif
+
+    static func delete() throws {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw VectorSecureCredentialStoreError.deleteFailed
+        }
+    }
+}
+
+@objc(VectorSecureStoragePlugin)
+public final class VectorSecureStoragePlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "VectorSecureStoragePlugin"
+    public let jsName = "VectorSecureStorage"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "get", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "delete", returnType: CAPPluginReturnPromise)
+    ]
+
+    // This narrow bootstrap credential boundary is temporary. A later account phase
+    // replaces it with customer authentication. Release builds cannot provision.
+    @objc public func get(_ call: CAPPluginCall) {
+        do {
+            let storedValue = try VectorSecureCredentialStore.read()
+            call.resolve(["value": storedValue ?? NSNull()])
+        } catch {
+            call.reject("Secure credential storage is unavailable.", "SECURE_STORAGE_READ_FAILED")
+        }
     }
 
     @objc public func delete(_ call: CAPPluginCall) {
-        let status = SecItemDelete(baseQuery as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
+        do {
+            try VectorSecureCredentialStore.delete()
+            call.resolve()
+        } catch {
             call.reject("Secure credential storage is unavailable.", "SECURE_STORAGE_DELETE_FAILED")
-            return
         }
-        call.resolve()
     }
 }

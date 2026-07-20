@@ -11,6 +11,8 @@ type VectorTheme = "day" | "night";
 const autoSleepMs = 5 * 60 * 1000;
 const autoSleepMessage = "Went to standby after 5 minutes of silence. Connect to resume.";
 const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
+const nativeVoicePreviewMessage =
+  "Voice preview: lifecycle readiness is Simulator-verified; iPhone microphone and audio hardware remain unverified.";
 const vectorPlatform = getVectorPlatform();
 
 function initialTheme(): VectorTheme {
@@ -37,9 +39,18 @@ export default function App() {
   const [showTypeInput, setShowTypeInput] = useState(false);
   const [mouthShape, setMouthShape] = useState<MouthShape>({ open: 0, width: 0.18, round: 0, teeth: 0 });
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([
-    newEntry("system", platformAvailable ? "Vector is ready. Connect voice, then talk naturally." : missingElectronBridgeMessage),
+    newEntry(
+      "system",
+      isNativeMobile
+        ? nativeVoicePreviewMessage
+        : platformAvailable
+          ? "Vector is ready. Connect voice, then talk naturally."
+          : missingElectronBridgeMessage,
+    ),
   ]);
-  const [status, setStatus] = useState(platformAvailable ? "Idle" : missingElectronBridgeMessage);
+  const [status, setStatus] = useState(
+    isNativeMobile ? nativeVoicePreviewMessage : platformAvailable ? "Idle" : missingElectronBridgeMessage,
+  );
   const [textPrompt, setTextPrompt] = useState("");
   const [uptime, setUptime] = useState("STANDBY");
   const [theme, setTheme] = useState<VectorTheme>(initialTheme);
@@ -82,6 +93,31 @@ export default function App() {
       setStatus("Disconnected while Vector is inactive.");
     });
   }, []);
+
+  useEffect(() => {
+    if (!vectorPlatform?.voiceSession) return;
+    return vectorPlatform.voiceSession.subscribe((event) => {
+      if (event.shouldDisconnect && clientRef.current) {
+        clientRef.current.disconnect();
+        clientRef.current = null;
+        const message = voiceSessionDisconnectMessage(event.type);
+        setStatus(message);
+        setTranscript((items) => [newEntry("system", message), ...items].slice(0, 80));
+        return;
+      }
+      if (event.type === "route-changed" && event.route && clientRef.current) {
+        setStatus(`Audio route changed: ${event.route}.`);
+      }
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      clientRef.current?.disconnect();
+      clientRef.current = null;
+    },
+    [],
+  );
 
   function toggleTheme() {
     setTheme((current) => {
@@ -151,6 +187,9 @@ export default function App() {
     const client = new VectorRealtimeClient(vectorPlatform, {
       onConnectionState: (state) => {
         setConnectionState(state);
+        if (state === "error" && clientRef.current === client) {
+          clientRef.current = null;
+        }
         if (state === "connected") {
           lastActivityRef.current = Date.now();
           playConnectSound();
@@ -481,6 +520,23 @@ export default function App() {
       />
     </main>
   );
+}
+
+function voiceSessionDisconnectMessage(
+  type: "interruption" | "route-unavailable" | "media-services-reset" | "protected-data-unavailable" | "route-changed",
+): string {
+  switch (type) {
+    case "interruption":
+      return "Voice stopped for an audio interruption. Tap Start conversation when you are ready.";
+    case "route-unavailable":
+      return "Voice stopped because the active audio route became unavailable. Check your output, then reconnect.";
+    case "media-services-reset":
+      return "Voice stopped because iOS reset its audio service. Tap Start conversation to create a fresh session.";
+    case "protected-data-unavailable":
+      return "Voice stopped while the device was locked. Unlock, then reconnect.";
+    case "route-changed":
+      return "Voice stopped after an audio route change. Check your output, then reconnect.";
+  }
 }
 
 function playTone(freqStart: number, freqEnd: number, duration: number, volume: number, type: OscillatorType = "sine") {
