@@ -628,7 +628,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     }
 
     private func validateSecureImage(_ value: String) throws {
-        guard let components = URLComponents(string: value), components.scheme == "https", components.host != nil, components.user == nil, components.password == nil, components.query == nil, components.fragment == nil else {
+        guard let components = URLComponents(string: value), components.scheme?.lowercased() == "https", components.host != nil, components.user == nil, components.password == nil, components.query == nil, components.fragment == nil else {
             throw VectorMobileDataError.invalid("Only secure HTTPS images can be saved on iOS.")
         }
     }

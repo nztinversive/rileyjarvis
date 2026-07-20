@@ -184,6 +184,8 @@ final class VectorMobileDataCoreTests: XCTestCase {
 
     func testReservedRecordFieldsAndUnsafeImagesFailClosed() throws {
         let store = VectorMobileDataStore(directoryURL: directory)
+        let uppercaseHTTPS = try store.saveArtifact(id: nil, title: "Remote", kind: "image", content: "HTTPS://example.com/image.png", language: nil)
+        XCTAssertEqual(uppercaseHTTPS.content, "HTTPS://example.com/image.png")
         XCTAssertThrowsError(try store.createRecord(collection: "tasks", title: "Unsafe", fields: ["__proto__": .object(["secret": .bool(true)])]))
         XCTAssertThrowsError(try store.saveArtifact(id: nil, title: "Local", kind: "image", content: "file:///private/image.png", language: nil))
         XCTAssertThrowsError(try store.saveArtifact(id: nil, title: "Credential", kind: "image", content: "https://token@example.com/image.png", language: nil))

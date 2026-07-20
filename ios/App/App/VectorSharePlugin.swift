@@ -34,7 +34,7 @@ public final class VectorSharePlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
         }
-        if let value = call.getString("url"), let components = URLComponents(string: value), components.scheme == "https", components.host != nil, components.user == nil, components.password == nil, components.query == nil, components.fragment == nil, let url = components.url {
+        if let value = call.getString("url"), let components = URLComponents(string: value), components.scheme?.lowercased() == "https", components.host != nil, components.user == nil, components.password == nil, components.query == nil, components.fragment == nil, let url = components.url {
             items.append(url)
         } else if call.getString("url") != nil {
             if let temporaryDirectory { try? FileManager.default.removeItem(at: temporaryDirectory) }
