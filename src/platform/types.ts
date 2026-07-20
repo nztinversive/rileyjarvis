@@ -92,14 +92,23 @@ export type MobileDataCapability = {
   list: () => Promise<import("../mobile/data").VectorMobileStore>;
   subscribe: (callback: (store: import("../mobile/data").VectorMobileStore) => void) => () => void;
   confirmDeletion: (input: { kind: "note" | "record" | "saved artifact"; summary: string }) => Promise<boolean>;
-  createNote: (input: { text: string; tags?: string[] }) => Promise<import("../mobile/data").VectorMobileStore>;
+  createNote: (input: { text: string; tags?: string[] }) => Promise<{
+    store: import("../mobile/data").VectorMobileStore;
+    itemId: string;
+  }>;
   updateNote: (input: { id: string; text?: string; tags?: string[] }) => Promise<import("../mobile/data").VectorMobileStore>;
   deleteNote: (id: string) => Promise<import("../mobile/data").VectorMobileStore>;
-  createRecord: (input: { collection: string; title: string; data?: Record<string, unknown> }) => Promise<import("../mobile/data").VectorMobileStore>;
+  createRecord: (input: { collection: string; title: string; data?: Record<string, unknown> }) => Promise<{
+    store: import("../mobile/data").VectorMobileStore;
+    itemId: string;
+  }>;
   searchRecords: (input: { collection: string; query?: string; limit?: number }) => Promise<import("../mobile/data").VectorMobileRecord[]>;
   updateRecord: (input: { id: string; title?: string; data?: Record<string, unknown> }) => Promise<import("../mobile/data").VectorMobileStore>;
   deleteRecord: (id: string) => Promise<import("../mobile/data").VectorMobileStore>;
-  saveArtifact: (artifact: VectorArtifact, id?: string) => Promise<import("../mobile/data").VectorMobileStore>;
+  saveArtifact: (artifact: VectorArtifact, id?: string) => Promise<{
+    store: import("../mobile/data").VectorMobileStore;
+    itemId: string;
+  }>;
   deleteArtifact: (id: string) => Promise<import("../mobile/data").VectorMobileStore>;
 };
 

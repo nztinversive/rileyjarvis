@@ -119,6 +119,9 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.match(plugin, /applicationSupportDirectory/);
   assert.match(plugin, /operationQueue = DispatchQueue\(label: "com\.rileyjarvis\.vector\.mobile-data-plugin"/);
   assert.match(plugin, /try self\.ensureReadyForMutation\(\)[\s\S]*?self\.store\.addNote/);
+  assert.match(plugin, /mutationResult\(itemId: note\.id\)/);
+  assert.match(plugin, /mutationResult\(itemId: record\.id\)/);
+  assert.match(plugin, /mutationResult\(itemId: artifact\.id\)/);
   assert.match(plugin, /CAPPluginMethod\(name: "searchRecords"/);
   assert.match(core, /DispatchQueue\(label: "com\.rileyjarvis\.vector\.mobile-data"\)/);
   assert.match(core, /options: \[\.atomic\]/);
@@ -133,8 +136,9 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.match(bridge, /registerPluginInstance\(VectorMobileDataPlugin\(\)\)/);
   assert.match(bridge, /registerPluginInstance\(VectorSharePlugin\(\)\)/);
   assert.match(project, /VectorMobileDataCore\.swift in Sources/);
-  assert.match(library, /if \(mutationInFlight\.current\) return false/);
+  assert.match(library, /if \(mutationInFlight\.current \|\| !libraryReady\) return false/);
   assert.match(library, /aria-busy=\{mutating\}/);
+  assert.match(library, /libraryReady && section === "current"/);
   assert.match(library, /mode !== "new" && !draftTouched && collections\.length/);
   assert.match(library, /setDraftTouched\(true\)/);
 });

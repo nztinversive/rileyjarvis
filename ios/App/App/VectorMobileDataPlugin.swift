@@ -83,11 +83,11 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public func createNote(_ call: CAPPluginCall) {
         perform(call) {
             try self.ensureReadyForMutation()
-            _ = try self.store.addNote(
+            let note = try self.store.addNote(
                 text: self.required(call.getString("text"), label: "Note"),
                 tags: call.getArray("tags", String.self) ?? []
             )
-            call.resolve(try self.storeDictionary())
+            call.resolve(try self.mutationResult(itemId: note.id))
         }
     }
 
@@ -116,12 +116,12 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public func createRecord(_ call: CAPPluginCall) {
         perform(call) {
             try self.ensureReadyForMutation()
-            _ = try self.store.createRecord(
+            let record = try self.store.createRecord(
                 collection: self.required(call.getString("collection"), label: "Collection"),
                 title: self.required(call.getString("title"), label: "Title"),
                 fields: try self.jsonFields(call.getObject("data"))
             )
-            call.resolve(try self.storeDictionary())
+            call.resolve(try self.mutationResult(itemId: record.id))
         }
     }
 
@@ -162,14 +162,14 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public func saveArtifact(_ call: CAPPluginCall) {
         perform(call) {
             try self.ensureReadyForMutation()
-            _ = try self.store.saveArtifact(
+            let artifact = try self.store.saveArtifact(
                 id: call.getString("id"),
                 title: self.required(call.getString("title"), label: "Title"),
                 kind: self.required(call.getString("kind"), label: "Kind"),
                 content: self.required(call.getString("content"), label: "Artifact"),
                 language: call.getString("language")
             )
-            call.resolve(try self.storeDictionary())
+            call.resolve(try self.mutationResult(itemId: artifact.id))
         }
     }
 
@@ -214,6 +214,13 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
         if let recovery = try store.snapshot().recoveredCorruptStore {
             throw VectorMobileDataError.corruptStorePreserved(recovery)
         }
+    }
+
+    private func mutationResult(itemId: String) throws -> [String: Any] {
+        [
+            "store": try storeDictionary(),
+            "itemId": itemId
+        ]
     }
 
     private func required(_ value: String?, label: String) throws -> String {

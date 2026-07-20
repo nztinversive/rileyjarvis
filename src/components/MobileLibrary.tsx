@@ -43,6 +43,7 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
   const [notice, setNotice] = useState("");
   const [mutating, setMutating] = useState(false);
   const mutationInFlight = useRef(false);
+  const libraryReady = state.status === "ready";
 
   async function refresh() {
     dispatch({ type: "loading" });
@@ -54,7 +55,7 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
   }
 
   async function mutate(operation: () => ReturnType<MobileDataCapability["list"]>, success: string): Promise<boolean> {
-    if (mutationInFlight.current) return false;
+    if (mutationInFlight.current || !libraryReady) return false;
     mutationInFlight.current = true;
     setMutating(true);
     setNotice("");
@@ -82,7 +83,7 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
         {sections.map((item) => {
           const Icon = item.icon;
           return (
-            <button key={item.id} type="button" role="tab" aria-selected={section === item.id} className={section === item.id ? "active" : ""} onClick={() => setSection(item.id)}>
+            <button key={item.id} type="button" role="tab" aria-selected={section === item.id} className={section === item.id ? "active" : ""} disabled={!libraryReady} onClick={() => setSection(item.id)}>
               <Icon size={17} aria-hidden="true" />
               <span>{item.label}</span>
             </button>
@@ -100,7 +101,7 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
       {state.status === "loading" ? <div className="mobile-library-state" role="status">Loading private local data…</div> : null}
       {notice ? <p className="mobile-library-notice" role="status">{notice}</p> : null}
 
-      {section === "current" ? (
+      {libraryReady && section === "current" ? (
         <CurrentArtifact
           artifact={artifact}
           nativeShare={nativeShare}
@@ -108,36 +109,36 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
           onOpenExternalUrl={onOpenExternalUrl}
           onSave={async () => {
             if (!artifact) return;
-            await mutate(() => mobileData.saveArtifact(artifact), "Saved to this device.");
+            await mutate(() => mobileData.saveArtifact(artifact).then((result) => result.store), "Saved to this device.");
           }}
         />
       ) : null}
-      {section === "saved" ? (
+      {libraryReady && section === "saved" ? (
         <SavedLibrary
           items={state.store.artifacts}
           nativeShare={nativeShare}
           pending={mutating}
           onOpenExternalUrl={onOpenExternalUrl}
-          onUpdate={(item, title) => mutate(() => mobileData.saveArtifact({ ...item, title }, item.id), "Saved artifact updated.")}
+          onUpdate={(item, title) => mutate(() => mobileData.saveArtifact({ ...item, title }, item.id).then((result) => result.store), "Saved artifact updated.")}
           onDelete={(id) => mutate(() => mobileData.deleteArtifact(id), "Removed from Saved.")}
         />
       ) : null}
-      {section === "notes" ? (
+      {libraryReady && section === "notes" ? (
         <NotesLibrary
           items={state.store.notes}
           nativeShare={nativeShare}
           pending={mutating}
-          onCreate={(text, tags) => mutate(() => mobileData.createNote({ text, tags }), "Note saved locally.")}
+          onCreate={(text, tags) => mutate(() => mobileData.createNote({ text, tags }).then((result) => result.store), "Note saved locally.")}
           onUpdate={(id, text) => mutate(() => mobileData.updateNote({ id, text }), "Note updated.")}
           onDelete={(id) => mutate(() => mobileData.deleteNote(id), "Note deleted.")}
         />
       ) : null}
-      {section === "records" ? (
+      {libraryReady && section === "records" ? (
         <RecordsLibrary
           items={state.store.records}
           nativeShare={nativeShare}
           pending={mutating}
-          onCreate={(collection, title, data) => mutate(() => mobileData.createRecord({ collection, title, data }), "Record saved locally.")}
+          onCreate={(collection, title, data) => mutate(() => mobileData.createRecord({ collection, title, data }).then((result) => result.store), "Record saved locally.")}
           onUpdate={(id, title) => mutate(() => mobileData.updateRecord({ id, title }), "Record updated.")}
           onDelete={(id) => mutate(() => mobileData.deleteRecord(id), "Record deleted.")}
         />

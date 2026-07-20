@@ -310,16 +310,34 @@ test("the iOS adapter selects typed mobile data and share capabilities with boun
   const mobileData = {
     async list() { return structuredClone(store); },
     async confirmDeletion(input) { confirmationRequests.push(input); return { confirmed: nativeConfirmation }; },
-    async createNote(input) { store.notes.push({ id: "note-0001", text: input.text, tags: input.tags || [], createdAt: now, updatedAt: now }); return structuredClone(store); },
+    async createNote(input) {
+      store.notes.push(
+        { id: "note-rival", text: "Concurrent note", tags: [], createdAt: now, updatedAt: now },
+        { id: "note-0001", text: input.text, tags: input.tags || [], createdAt: now, updatedAt: now },
+      );
+      return { store: structuredClone(store), itemId: "note-0001" };
+    },
     async updateNote() { updates += 1; return structuredClone(store); },
     async deleteNote({ id }) { deletes += 1; store.notes = store.notes.filter((item) => item.id !== id); return structuredClone(store); },
-    async createRecord(input) { store.records.push({ id: "record-0001", collection: input.collection, title: input.title, data: input.data || {}, createdAt: now, updatedAt: now }); return structuredClone(store); },
+    async createRecord(input) {
+      store.records.push(
+        { id: "record-rival", collection: input.collection, title: "Concurrent record", data: {}, createdAt: now, updatedAt: now },
+        { id: "record-0001", collection: input.collection, title: input.title, data: input.data || {}, createdAt: now, updatedAt: now },
+      );
+      return { store: structuredClone(store), itemId: "record-0001" };
+    },
     async searchRecords({ collection, query = "", limit = 20 }) {
       return { records: structuredClone(store.records.filter((item) => item.collection === collection && item.title.toLowerCase().includes(query.toLowerCase())).slice(0, limit)) };
     },
     async updateRecord() { updates += 1; return structuredClone(store); },
     async deleteRecord() { return structuredClone(store); },
-    async saveArtifact(input) { store.artifacts.push({ id: "artifact-0001", ...input, createdAt: now, updatedAt: now }); return structuredClone(store); },
+    async saveArtifact(input) {
+      store.artifacts.push(
+        { id: "artifact-rival", title: "Concurrent artifact", kind: "text", content: "Other", createdAt: now, updatedAt: now },
+        { id: "artifact-0001", ...input, createdAt: now, updatedAt: now },
+      );
+      return { store: structuredClone(store), itemId: "artifact-0001" };
+    },
     async deleteArtifact() { return structuredClone(store); },
   };
   const shared = [];

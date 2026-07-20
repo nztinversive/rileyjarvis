@@ -88,6 +88,11 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
 
   async function validatedMutation(result: Promise<unknown>): Promise<VectorMobileStore> {
     const store = await validated(result);
+    notifyMobileDataListeners(store);
+    return store;
+  }
+
+  function notifyMobileDataListeners(store: VectorMobileStore): void {
     for (const listener of mobileDataListeners) {
       try {
         listener(store);
@@ -95,7 +100,18 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
         // A view subscriber must not turn a completed native mutation into a failed tool call.
       }
     }
-    return store;
+  }
+
+  async function validatedCreatedMutation(result: Promise<unknown>): Promise<{ store: VectorMobileStore; itemId: string }> {
+    const response = await result;
+    if (!response || typeof response !== "object" || Array.isArray(response)) {
+      throw new SafeIOSPlatformError("The local library returned malformed data.");
+    }
+    const envelope = response as Record<string, unknown>;
+    const store = validateMobileStore(envelope.store);
+    const itemId = validateMobileItemId(envelope.itemId as string);
+    notifyMobileDataListeners(store);
+    return { store, itemId };
   }
 
   const mobileData = dependencies.mobileData
@@ -113,12 +129,12 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
           return result?.confirmed === true;
         },
         createNote: async (input: { text: string; tags?: string[] }) =>
-          validatedMutation(dependencies.mobileData!.createNote(validateNoteCreateInput(input))),
+          validatedCreatedMutation(dependencies.mobileData!.createNote(validateNoteCreateInput(input))),
         updateNote: async (input: { id: string; text?: string; tags?: string[] }) =>
           validatedMutation(dependencies.mobileData!.updateNote(validateNoteUpdateInput(input))),
         deleteNote: async (id: string) => validatedMutation(dependencies.mobileData!.deleteNote({ id: validateMobileItemId(id) })),
         createRecord: async (input: { collection: string; title: string; data?: Record<string, unknown> }) =>
-          validatedMutation(dependencies.mobileData!.createRecord(validateRecordCreateInput(input))),
+          validatedCreatedMutation(dependencies.mobileData!.createRecord(validateRecordCreateInput(input))),
         searchRecords: async (input: { collection: string; query?: string; limit?: number }) => {
           const result = await dependencies.mobileData!.searchRecords(validateRecordSearchInput(input));
           const record = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
@@ -128,7 +144,7 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
           validatedMutation(dependencies.mobileData!.updateRecord(validateRecordUpdateInput(input))),
         deleteRecord: async (id: string) => validatedMutation(dependencies.mobileData!.deleteRecord({ id: validateMobileItemId(id) })),
         saveArtifact: async (artifact: VectorArtifact, id?: string) =>
-          validatedMutation(dependencies.mobileData!.saveArtifact({
+          validatedCreatedMutation(dependencies.mobileData!.saveArtifact({
             ...validateSavableArtifact(artifact),
             ...(id ? { id: validateMobileItemId(id) } : {}),
           })),
@@ -324,12 +340,11 @@ async function executeIOSTool(
 
   try {
     if (toolCall.name === "note_add") {
-      const existing = new Set((await mobileData!.list()).notes.map((note) => note.id));
-      const store = await mobileData!.createNote({
+      const { store, itemId } = await mobileData!.createNote({
         text: requiredContent(toolCall.arguments.text, mobileDataLimits.maxTextLength),
         tags: optionalStringArray(toolCall.arguments.tags, mobileDataLimits.maxTags, mobileDataLimits.maxTagLength),
       });
-      const note = store.notes.find((item) => !existing.has(item.id));
+      const note = store.notes.find((item) => item.id === itemId);
       if (!note) throw new Error("The created note could not be read back safely.");
       return { ok: true, note, artifact: notesArtifact(store.notes) };
     }
@@ -357,13 +372,12 @@ async function executeIOSTool(
       return { ok: true, deleted: true, artifact: notesArtifact(store.notes) };
     }
     if (toolCall.name === "records_create") {
-      const existing = new Set((await mobileData!.list()).records.map((record) => record.id));
-      const store = await mobileData!.createRecord({
+      const { store, itemId } = await mobileData!.createRecord({
         collection: requiredString(toolCall.arguments.collection, mobileDataLimits.maxCollectionLength),
         title: requiredString(toolCall.arguments.title, mobileDataLimits.maxTitleLength),
         data: plainRecord(toolCall.arguments.data ?? toolCall.arguments.fields),
       });
-      const record = store.records.find((item) => !existing.has(item.id));
+      const record = store.records.find((item) => item.id === itemId);
       if (!record) throw new Error("The created record could not be read back safely.");
       return { ok: true, record, artifact: recordsArtifact([record], record.collection) };
     }
@@ -397,9 +411,8 @@ async function executeIOSTool(
     if (toolCall.name === "artifact_save") {
       const artifact = parseIOSArtifact(toolCall.arguments);
       if (!artifact) return unsupportedTool("That artifact cannot be saved on iOS.");
-      const existing = new Set((await mobileData!.list()).artifacts.map((item) => item.id));
-      const store = await mobileData!.saveArtifact(artifact);
-      const savedArtifact = store.artifacts.find((item) => !existing.has(item.id));
+      const { store, itemId } = await mobileData!.saveArtifact(artifact);
+      const savedArtifact = store.artifacts.find((item) => item.id === itemId);
       if (!savedArtifact) throw new Error("The saved artifact could not be read back safely.");
       return { ok: true, savedArtifact: savedArtifactSummary(savedArtifact), artifact: savedArtifactsArtifact(store.artifacts) };
     }
