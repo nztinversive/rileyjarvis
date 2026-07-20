@@ -193,10 +193,18 @@ Other useful commands:
 npm run typecheck
 npm test
 npm run build
+npm run server:test
+npm run server:smoke
 npm run pack
 npm run dist:win
 npm start
 ```
+
+## Secure Realtime session service
+
+Phase 2 includes an isolated Node service for future native clients under `server/`. It mints short-lived Realtime credentials without exposing the standard OpenAI API key, applies authenticated-subject rate limits, binds a privacy-preserving safety identifier, and rejects client attempts to choose session settings. It does not replace or reroute the Electron credential flow.
+
+See [`server/README.md`](server/README.md) for the endpoint contract, local placeholder configuration, trust boundary, and the Phase 3 iOS adapter handoff.
 
 `npm run dist:win` creates an unsigned portable Windows executable under `release/`. Unsigned Windows builds may show SmartScreen warnings until code signing is added.
 
