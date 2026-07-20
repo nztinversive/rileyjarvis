@@ -202,6 +202,7 @@ function RecordsLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDel
   const [title, setTitle] = useState("");
   const [dataText, setDataText] = useState("{}");
   const [formError, setFormError] = useState("");
+  const [draftTouched, setDraftTouched] = useState(false);
   const [query, setQuery] = useState("");
   const collections = useMemo(() => recordCollectionNames(items), [items]);
   const matches = useMemo(() => items.filter((item) => recordMatchesSearch(item, browseCollection, query)), [browseCollection, items, query]);
@@ -215,13 +216,13 @@ function RecordsLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDel
       <div className="mobile-library-heading"><div><span>Structured and searchable</span><h2 id="mobile-records-heading">Records</h2></div><b>{items.length}/{mobileDataLimits.maxRecords}</b></div>
       <div className="mobile-library-view-switcher" role="group" aria-label="Record view">
         <button type="button" className={mode === "browse" ? "active" : ""} aria-pressed={mode === "browse"} onClick={() => setMode("browse")}><Library size={17} />Browse</button>
-        <button type="button" className={mode === "new" ? "active" : ""} aria-pressed={mode === "new"} onClick={() => { if (collections.length) setNewCollection(browseCollection); setMode("new"); }}><Plus size={17} />New record</button>
+        <button type="button" className={mode === "new" ? "active" : ""} aria-pressed={mode === "new"} onClick={() => { if (mode !== "new" && !draftTouched && collections.length) setNewCollection(browseCollection); setMode("new"); }}><Plus size={17} />New record</button>
       </div>
       {mode === "new" ? (
-        <form className="mobile-library-form" onSubmit={(event) => { event.preventDefault(); try { const parsed = JSON.parse(dataText); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); setFormError(""); void onCreate(newCollection, title, parsed).then((saved) => { if (saved) { setBrowseCollection(newCollection.trim()); setTitle(""); setDataText("{}"); setMode("browse"); } }); } catch { setFormError("Structured data must be a JSON object within the local size limit."); } }}>
-          <label htmlFor="mobile-record-collection">Collection</label><input id="mobile-record-collection" required maxLength={mobileDataLimits.maxCollectionLength} value={newCollection} onChange={(event) => setNewCollection(event.target.value)} list="mobile-record-collections" />
-          <label htmlFor="mobile-record-title">Record title</label><input id="mobile-record-title" required maxLength={mobileDataLimits.maxTitleLength} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="New record" />
-          <label htmlFor="mobile-record-data">Structured data (JSON)</label><textarea id="mobile-record-data" value={dataText} onChange={(event) => setDataText(event.target.value)} maxLength={mobileDataLimits.maxRecordDataBytes} spellCheck={false} />
+        <form className="mobile-library-form" onSubmit={(event) => { event.preventDefault(); try { const parsed = JSON.parse(dataText); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); setFormError(""); void onCreate(newCollection, title, parsed).then((saved) => { if (saved) { setBrowseCollection(newCollection.trim()); setTitle(""); setDataText("{}"); setDraftTouched(false); setMode("browse"); } }); } catch { setFormError("Structured data must be a JSON object within the local size limit."); } }}>
+          <label htmlFor="mobile-record-collection">Collection</label><input id="mobile-record-collection" required maxLength={mobileDataLimits.maxCollectionLength} value={newCollection} onChange={(event) => { setNewCollection(event.target.value); setDraftTouched(true); }} list="mobile-record-collections" />
+          <label htmlFor="mobile-record-title">Record title</label><input id="mobile-record-title" required maxLength={mobileDataLimits.maxTitleLength} value={title} onChange={(event) => { setTitle(event.target.value); setDraftTouched(true); }} placeholder="New record" />
+          <label htmlFor="mobile-record-data">Structured data (JSON)</label><textarea id="mobile-record-data" value={dataText} onChange={(event) => { setDataText(event.target.value); setDraftTouched(true); }} maxLength={mobileDataLimits.maxRecordDataBytes} spellCheck={false} />
           {formError ? <p role="alert">{formError}</p> : null}
           <button type="submit" disabled={pending || !newCollection.trim() || !title.trim()}><Plus size={18} />{pending ? "Saving…" : "Save record"}</button>
         </form>

@@ -135,6 +135,8 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.match(project, /VectorMobileDataCore\.swift in Sources/);
   assert.match(library, /if \(mutationInFlight\.current\) return false/);
   assert.match(library, /aria-busy=\{mutating\}/);
+  assert.match(library, /mode !== "new" && !draftTouched && collections\.length/);
+  assert.match(library, /setDraftTouched\(true\)/);
 });
 
 function note(id, timestamp) { return { id, text: "Note", tags: [], createdAt: timestamp, updatedAt: timestamp }; }
