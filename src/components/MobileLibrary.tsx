@@ -83,7 +83,7 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
         {sections.map((item) => {
           const Icon = item.icon;
           return (
-            <button key={item.id} type="button" role="tab" aria-selected={section === item.id} className={section === item.id ? "active" : ""} disabled={!libraryReady} onClick={() => setSection(item.id)}>
+            <button key={item.id} type="button" role="tab" aria-selected={section === item.id} className={section === item.id ? "active" : ""} disabled={item.id !== "current" && !libraryReady} onClick={() => setSection(item.id)}>
               <Icon size={17} aria-hidden="true" />
               <span>{item.label}</span>
             </button>
@@ -101,9 +101,10 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
       {state.status === "loading" ? <div className="mobile-library-state" role="status">Loading private local data…</div> : null}
       {notice ? <p className="mobile-library-notice" role="status">{notice}</p> : null}
 
-      {libraryReady && section === "current" ? (
+      {section === "current" ? (
         <CurrentArtifact
           artifact={artifact}
+          canSave={libraryReady}
           nativeShare={nativeShare}
           pending={mutating}
           onOpenExternalUrl={onOpenExternalUrl}
@@ -147,7 +148,7 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
   );
 }
 
-function CurrentArtifact({ artifact, nativeShare, pending, onSave, onOpenExternalUrl }: { artifact: VectorArtifact | null; nativeShare?: NativeShareCapability; pending: boolean; onSave: () => Promise<boolean | void>; onOpenExternalUrl?: (url: string) => Promise<void> }) {
+function CurrentArtifact({ artifact, canSave, nativeShare, pending, onSave, onOpenExternalUrl }: { artifact: VectorArtifact | null; canSave: boolean; nativeShare?: NativeShareCapability; pending: boolean; onSave: () => Promise<boolean | void>; onOpenExternalUrl?: (url: string) => Promise<void> }) {
   let saveError = "";
   if (artifact) {
     try { validateSavableArtifact(artifact); } catch (error) { saveError = safeMessage(error); }
@@ -158,7 +159,7 @@ function CurrentArtifact({ artifact, nativeShare, pending, onSave, onOpenExterna
         <div><span>Session scoped</span><h2 id="mobile-current-heading">Current artifact</h2></div>
         <div className="mobile-library-heading-actions">
           {nativeShare && artifact && !saveError ? <button type="button" onClick={() => void nativeShare.share(artifactSharePayload(artifact)).catch((error) => window.alert(safeMessage(error)))} aria-label="Share current artifact"><Share2 size={18} />Share</button> : null}
-          <button type="button" disabled={pending || !artifact || Boolean(saveError)} onClick={() => void onSave()} aria-label="Save current artifact to this device"><Download size={18} />{pending ? "Saving…" : "Save"}</button>
+          <button type="button" disabled={!canSave || pending || !artifact || Boolean(saveError)} onClick={() => void onSave()} aria-label="Save current artifact to this device"><Download size={18} />{pending ? "Saving…" : "Save"}</button>
         </div>
       </div>
       {saveError ? <p className="mobile-library-hint">{saveError}</p> : null}
