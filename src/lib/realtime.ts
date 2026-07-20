@@ -106,6 +106,7 @@ export type RealtimeClientDependencies = {
   now?: () => number;
   sdpTimeoutMs?: number;
   connectionTimeoutMs?: number;
+  disconnectionGraceMs?: number;
 };
 
 export async function prepareRealtimeSession(
@@ -146,6 +147,7 @@ export class VectorRealtimeClient {
   private setupAbortController: AbortController | null = null;
   private sdpAbortController: AbortController | null = null;
   private connectionDeadline: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private disconnectionRecoveryDeadline: ReturnType<typeof globalThis.setTimeout> | null = null;
   private remoteAudio: HTMLAudioElement | null = null;
   private listenerCleanups: Array<() => void> = [];
   private closingResources = false;
@@ -257,7 +259,7 @@ export class VectorRealtimeClient {
       });
       this.addListener(pc, "connectionstatechange", () => {
         if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        if (pc.connectionState === "failed") {
           this.failActiveConnection(
             connectionAttempt,
             new RealtimeConnectionError(
@@ -265,11 +267,15 @@ export class VectorRealtimeClient {
               "The Realtime connection was lost. Disconnect and start a new conversation.",
             ),
           );
+        } else if (pc.connectionState === "disconnected") {
+          this.scheduleDisconnectionRecoveryDeadline(connectionAttempt);
+        } else if (pc.connectionState === "connected") {
+          this.clearDisconnectionRecoveryDeadline();
         }
       });
       this.addListener(pc, "iceconnectionstatechange", () => {
         if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
-        if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        if (pc.iceConnectionState === "failed") {
           this.failActiveConnection(
             connectionAttempt,
             new RealtimeConnectionError(
@@ -277,6 +283,10 @@ export class VectorRealtimeClient {
               "The Realtime connection was lost. Disconnect and start a new conversation.",
             ),
           );
+        } else if (pc.iceConnectionState === "disconnected") {
+          this.scheduleDisconnectionRecoveryDeadline(connectionAttempt);
+        } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+          this.clearDisconnectionRecoveryDeadline();
         }
       });
 
@@ -462,6 +472,7 @@ export class VectorRealtimeClient {
       this.sdpAbortController?.abort();
       this.sdpAbortController = null;
       this.clearConnectionDeadline();
+      this.clearDisconnectionRecoveryDeadline();
       for (const removeListener of this.listenerCleanups.splice(0)) removeListener();
       this.dc?.close();
       this.pc?.close();
@@ -642,10 +653,36 @@ export class VectorRealtimeClient {
     return typeof configured === "number" && Number.isFinite(configured) && configured > 0 ? configured : 15_000;
   }
 
+  private disconnectionGraceMs(): number {
+    const configured = this.dependencies.disconnectionGraceMs;
+    return typeof configured === "number" && Number.isFinite(configured) && configured > 0 ? configured : 5_000;
+  }
+
   private clearConnectionDeadline(): void {
     if (!this.connectionDeadline) return;
     globalThis.clearTimeout(this.connectionDeadline);
     this.connectionDeadline = null;
+  }
+
+  private scheduleDisconnectionRecoveryDeadline(connectionAttempt: number): void {
+    if (this.disconnectionRecoveryDeadline) return;
+    this.disconnectionRecoveryDeadline = globalThis.setTimeout(() => {
+      this.disconnectionRecoveryDeadline = null;
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
+      this.failActiveConnection(
+        connectionAttempt,
+        new RealtimeConnectionError(
+          "peer_connection",
+          "The Realtime connection did not recover. Start a new conversation to reconnect.",
+        ),
+      );
+    }, this.disconnectionGraceMs());
+  }
+
+  private clearDisconnectionRecoveryDeadline(): void {
+    if (!this.disconnectionRecoveryDeadline) return;
+    globalThis.clearTimeout(this.disconnectionRecoveryDeadline);
+    this.disconnectionRecoveryDeadline = null;
   }
 
   sendText(text: string): void {

@@ -376,6 +376,38 @@ test("remote output uses one audio element and offline teardown permits a fresh 
   client.disconnect();
 });
 
+test("transient ICE disconnection gets a recovery window before teardown", async () => {
+  const callbacks = callbackRecorder();
+  const peer = new FakePeerConnection();
+  const track = new FakeTrack();
+  const client = connectedClient(callbacks, {
+    peer,
+    stream: new FakeStream([track]),
+    disconnectionGraceMs: 15,
+  });
+
+  await client.connect();
+  peer.dataChannel.open();
+
+  peer.connectionState = "disconnected";
+  peer.dispatchEvent(new Event("connectionstatechange"));
+  assert.equal(callbacks.states.at(-1), "connected");
+  assert.equal(track.stopped, false);
+
+  peer.connectionState = "connected";
+  peer.dispatchEvent(new Event("connectionstatechange"));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(callbacks.states.at(-1), "connected");
+  assert.equal(track.stopped, false);
+
+  peer.iceConnectionState = "disconnected";
+  peer.dispatchEvent(new Event("iceconnectionstatechange"));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(callbacks.states.at(-1), "error");
+  assert.equal(track.stopped, true);
+  assert.match(callbacks.statuses.at(-1), /did not recover/);
+});
+
 test("typed prompts use the live data channel and remain blocked after teardown", async () => {
   const callbacks = callbackRecorder();
   const peer = new FakePeerConnection();
@@ -518,6 +550,7 @@ function dependencies(options = {}) {
     now: options.now ?? (() => 1_000),
     sdpTimeoutMs: options.sdpTimeoutMs,
     connectionTimeoutMs: options.connectionTimeoutMs,
+    disconnectionGraceMs: options.disconnectionGraceMs,
     createAudioContext: options.createAudioContext,
     requestAnimationFrame: options.requestAnimationFrame,
     cancelAnimationFrame: options.cancelAnimationFrame,
