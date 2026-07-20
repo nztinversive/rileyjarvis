@@ -53,6 +53,30 @@ final class VectorMobileDataCoreTests: XCTestCase {
         XCTAssertEqual(try store.snapshot().document.notes.first?.text, "Changed after prompt")
     }
 
+    func testNoteUpdateRejectsAStaleExpectedTimestamp() throws {
+        let store = VectorMobileDataStore(directoryURL: directory)
+        let original = try store.addNote(text: "Original", tags: [], now: Date(timeIntervalSince1970: 1), id: "note-0001")
+        let newer = try store.updateNote(id: original.id, text: "Newer value", tags: nil, now: Date(timeIntervalSince1970: 1))
+        XCTAssertNotEqual(newer.updatedAt, original.updatedAt)
+
+        XCTAssertThrowsError(
+            try store.updateNote(
+                id: original.id,
+                text: "Stale draft",
+                tags: nil,
+                expectedUpdatedAt: original.updatedAt,
+                now: Date(timeIntervalSince1970: 1)
+            )
+        ) {
+            XCTAssertEqual($0 as? VectorMobileDataError, .itemChanged)
+            XCTAssertEqual(
+                ($0 as? VectorMobileDataError)?.errorDescription,
+                "The selected item changed. Review the latest version and try again."
+            )
+        }
+        XCTAssertEqual(try store.snapshot().document.notes.first?.text, "Newer value")
+    }
+
     func testCorruptionIsPreservedBeforeRecoveryWrites() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
@@ -75,6 +99,27 @@ final class VectorMobileDataCoreTests: XCTestCase {
         _ = try store.addNote(text: "Recovered", tags: [])
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(contentsOf: storeURL)))
         XCTAssertEqual(try String(contentsOf: recoveryURL, encoding: .utf8), "{broken")
+    }
+
+    func testTransientReadFailureDoesNotQuarantineValidStore() throws {
+        let store = VectorMobileDataStore(directoryURL: directory)
+        _ = try store.addNote(text: "Keep protected data", tags: [], id: "note-0001")
+        let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
+        enum SimulatedReadError: Error { case unavailable }
+        var failNextRead = true
+        let retryableStore = VectorMobileDataStore(directoryURL: directory) { url in
+            if failNextRead {
+                failNextRead = false
+                throw SimulatedReadError.unavailable
+            }
+            return try Data(contentsOf: url)
+        }
+
+        XCTAssertThrowsError(try retryableStore.snapshot())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
+
+        XCTAssertEqual(try retryableStore.snapshot().document.notes.first?.text, "Keep protected data")
     }
 
     func testMalformedLanguageAndNestedRecordKeysUseRecoveryPath() throws {

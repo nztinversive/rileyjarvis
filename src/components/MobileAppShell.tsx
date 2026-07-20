@@ -29,7 +29,7 @@ import {
 } from "../mobile/navigation";
 import type { MobileDataCapability, NativeShareCapability, VectorArtifact } from "../platform";
 import { ArtifactPanel } from "./ArtifactPanel";
-import { MobileLibrary } from "./MobileLibrary";
+import { MobileLibrary, type MobileNoteEditDraft } from "./MobileLibrary";
 import { VectorOrb } from "./VectorOrb";
 
 type MobileAppShellProps = {
@@ -83,6 +83,7 @@ export function MobileAppShell({
     activeTab: "talk",
   });
   const [unseenArtifact, setUnseenArtifact] = useState(false);
+  const [noteEditDraft, setNoteEditDraft] = useState<MobileNoteEditDraft | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const previousArtifact = useRef(artifact);
 
@@ -153,7 +154,7 @@ export function MobileAppShell({
               Artifacts
             </h1>
             {mobileData ? (
-              <MobileLibrary artifact={artifact} mobileData={mobileData} nativeShare={nativeShare} onOpenExternalUrl={onOpenExternalUrl} />
+              <MobileLibrary artifact={artifact} editDraft={noteEditDraft} mobileData={mobileData} nativeShare={nativeShare} onOpenExternalUrl={onOpenExternalUrl} setEditDraft={setNoteEditDraft} />
             ) : (
               <ArtifactPanel artifact={artifact} visible fullscreen={false} presentation="mobile" onToggleVisible={() => selectTab("talk")} onToggleFullscreen={() => undefined} onOpenExternalUrl={onOpenExternalUrl} />
             )}

@@ -42,7 +42,7 @@ export type IOSVectorPlatformDependencies = {
     list: () => Promise<unknown>;
     confirmDeletion: (input: { kind: string; id: string }) => Promise<unknown>;
     createNote: (input: { text: string; tags?: string[] }) => Promise<unknown>;
-    updateNote: (input: { id: string; text?: string; tags?: string[] }) => Promise<unknown>;
+    updateNote: (input: { id: string; text?: string; tags?: string[]; expectedUpdatedAt?: string }) => Promise<unknown>;
     deleteNote: (input: { id: string }) => Promise<unknown>;
     createRecord: (input: { collection: string; title: string; data?: Record<string, unknown> }) => Promise<unknown>;
     searchRecords: (input: { collection: string; query?: string; limit?: number }) => Promise<unknown>;
@@ -134,7 +134,7 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
         },
         createNote: async (input: { text: string; tags?: string[] }) =>
           validatedCreatedMutation(dependencies.mobileData!.createNote(validateNoteCreateInput(input))),
-        updateNote: async (input: { id: string; text?: string; tags?: string[] }) =>
+        updateNote: async (input: { id: string; text?: string; tags?: string[]; expectedUpdatedAt?: string }) =>
           validatedMutation(dependencies.mobileData!.updateNote(validateNoteUpdateInput(input))),
         deleteNote: async (id: string) => validatedMutation(dependencies.mobileData!.deleteNote({ id: validateMobileItemId(id) })),
         createRecord: async (input: { collection: string; title: string; data?: Record<string, unknown> }) =>

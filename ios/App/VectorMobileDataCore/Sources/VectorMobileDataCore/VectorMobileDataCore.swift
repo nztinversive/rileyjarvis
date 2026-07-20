@@ -97,7 +97,7 @@ public enum VectorMobileDataError: LocalizedError, Equatable {
         case .invalid(let message): return message
         case .notFound: return "Item not found."
         case .confirmationRequired: return "Explicit confirmation is required."
-        case .itemChanged: return "The selected item changed. Review it and confirm deletion again."
+        case .itemChanged: return "The selected item changed. Review the latest version and try again."
         case .storageLimit: return "Local storage limit reached."
         case .unsupportedSchema: return "This data was created by a newer Vector version."
         case .corruptStorePreserved: return "Local data was damaged. The original file was preserved for recovery."
@@ -145,12 +145,18 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     private let encoder: JSONEncoder
     private let contractEncoder: JSONEncoder
     private let decoder = JSONDecoder()
+    private let readData: (URL) throws -> Data
     private var loaded: VectorMobileDataDocument?
     private var recoveredCorruptStore: String?
 
-    public init(directoryURL: URL) {
+    public convenience init(directoryURL: URL) {
+        self.init(directoryURL: directoryURL, readData: { try Data(contentsOf: $0) })
+    }
+
+    init(directoryURL: URL, readData: @escaping (URL) throws -> Data) {
         self.directoryURL = directoryURL
         self.storeURL = directoryURL.appendingPathComponent("vector-mobile-data.json", isDirectory: false)
+        self.readData = readData
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         self.encoder = encoder
@@ -185,16 +191,19 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     }
 
     @discardableResult
-    public func updateNote(id: String, text: String?, tags: [String]?, now: Date = Date()) throws -> VectorMobileNote {
+    public func updateNote(id: String, text: String?, tags: [String]?, expectedUpdatedAt: String? = nil, now: Date = Date()) throws -> VectorMobileNote {
         try queue.sync {
             var document = try loadLocked()
             guard let index = document.notes.firstIndex(where: { $0.id == id }) else { throw VectorMobileDataError.notFound }
+            if let expectedUpdatedAt, document.notes[index].updatedAt != expectedUpdatedAt {
+                throw VectorMobileDataError.itemChanged
+            }
             if let text { document.notes[index].text = try boundedContent(text, label: "Note", maxBytes: Self.maxTextBytes) }
             if let tags {
                 guard tags.count <= 12 else { throw VectorMobileDataError.invalid("A note can have at most 12 tags.") }
                 document.notes[index].tags = try tags.map { try bounded($0, label: "Tag", maxBytes: 192) }
             }
-            document.notes[index].updatedAt = iso(now)
+            document.notes[index].updatedAt = nextTimestamp(after: document.notes[index].updatedAt, now: now)
             let note = document.notes[index]
             try persistLocked(document)
             return note
@@ -378,8 +387,11 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             }
             return try recoverCorruptStoreLocked()
         }
+        // File-protection and other transient I/O failures must remain retryable.
+        // Only data that was read successfully but cannot be decoded or validated
+        // is eligible for corruption recovery.
+        let data = try readData(storeURL)
         do {
-            let data = try Data(contentsOf: storeURL)
             let envelope = try decoder.decode(VectorMobileDataVersionEnvelope.self, from: data)
             guard envelope.schemaVersion <= Self.schemaVersion else {
                 throw VectorMobileDataError.unsupportedSchema
@@ -667,6 +679,15 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+
+    private func nextTimestamp(after current: String, now: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let currentDate = formatter.date(from: current), now <= currentDate else {
+            return iso(now)
+        }
+        return iso(currentDate.addingTimeInterval(0.001))
     }
 }
 

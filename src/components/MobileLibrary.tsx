@@ -18,12 +18,15 @@ import type { MobileDataCapability, NativeShareCapability, VectorArtifact } from
 import { ArtifactPanel } from "./ArtifactPanel";
 
 type LibrarySection = "current" | "saved" | "notes" | "records";
+export type MobileNoteEditDraft = { id: string; text: string; expectedUpdatedAt: string };
 
 type MobileLibraryProps = {
   artifact: VectorArtifact | null;
+  editDraft: MobileNoteEditDraft | null;
   mobileData: MobileDataCapability;
   nativeShare?: NativeShareCapability;
   onOpenExternalUrl?: (url: string) => Promise<void>;
+  setEditDraft: (draft: MobileNoteEditDraft | null) => void;
 };
 
 const sections: Array<{ id: LibrarySection; label: string; icon: typeof FileText }> = [
@@ -33,7 +36,7 @@ const sections: Array<{ id: LibrarySection; label: string; icon: typeof FileText
   { id: "records", label: "Records", icon: Database },
 ];
 
-export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExternalUrl }: MobileLibraryProps) {
+export function MobileLibrary({ artifact, editDraft, mobileData, nativeShare, onOpenExternalUrl, setEditDraft }: MobileLibraryProps) {
   const [section, setSection] = useState<LibrarySection>("current");
   const [state, dispatch] = useReducer(mobileLibraryReducer, {
     status: "loading",
@@ -136,11 +139,13 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
       ) : null}
       {libraryReady && section === "notes" ? (
         <NotesLibrary
+          editDraft={editDraft}
           items={state.store.notes}
           nativeShare={nativeShare}
           pending={mutating}
+          setEditDraft={setEditDraft}
           onCreate={(text, tags) => mutate(() => mobileData.createNote({ text, tags }).then((result) => result.store), "Note saved locally.")}
-          onUpdate={(id, text) => mutate(() => mobileData.updateNote({ id, text }), "Note updated.")}
+          onUpdate={(id, text, expectedUpdatedAt) => mutate(() => mobileData.updateNote({ id, text, expectedUpdatedAt }), "Note updated.")}
           onDelete={(id) => mutate(() => mobileData.deleteNote(id), "Note deleted.")}
         />
       ) : null}
@@ -191,9 +196,11 @@ function SavedLibrary({ items, nativeShare, pending, onUpdate, onDelete, onOpenE
   );
 }
 
-function NotesLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelete }: { items: VectorMobileNote[]; nativeShare?: NativeShareCapability; pending: boolean; onCreate: (text: string, tags: string[]) => Promise<boolean>; onUpdate: (id: string, text: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
+function NotesLibrary({ editDraft, items, nativeShare, pending, setEditDraft, onCreate, onUpdate, onDelete }: { editDraft: MobileNoteEditDraft | null; items: VectorMobileNote[]; nativeShare?: NativeShareCapability; pending: boolean; setEditDraft: (draft: MobileNoteEditDraft | null) => void; onCreate: (text: string, tags: string[]) => Promise<boolean>; onUpdate: (id: string, text: string, expectedUpdatedAt: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
   const [tags, setTags] = useState("");
+  const editTarget = editDraft ? items.find((item) => item.id === editDraft.id) : null;
+  const editConflict = Boolean(editDraft && editTarget?.updatedAt !== editDraft.expectedUpdatedAt);
   return (
     <section aria-labelledby="mobile-notes-heading">
       <div className="mobile-library-heading"><div><span>Private and local</span><h2 id="mobile-notes-heading">Notes</h2></div><b>{items.length}/{mobileDataLimits.maxNotes}</b></div>
@@ -202,7 +209,34 @@ function NotesLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelet
         <label htmlFor="mobile-note-tags">Tags, comma separated</label><input id="mobile-note-tags" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="idea, follow-up" />
         <button type="submit" disabled={pending || !text.trim()}><Plus size={18} />{pending ? "Saving…" : "Save note"}</button>
       </form>
-      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => promptContentEdit("Edit note", item.text, (value) => onUpdate(item.id, value))} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
+      {editDraft ? (
+        <form
+          className="mobile-library-form"
+          aria-label="Edit saved note"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (editConflict) return;
+            void onUpdate(editDraft.id, editDraft.text, editDraft.expectedUpdatedAt).then((saved) => {
+              if (saved) setEditDraft(null);
+            });
+          }}
+        >
+          <label htmlFor="mobile-note-edit">Edit note</label>
+          <textarea
+            id="mobile-note-edit"
+            required
+            maxLength={mobileDataLimits.maxTextLength}
+            value={editDraft.text}
+            onChange={(event) => setEditDraft({ ...editDraft, text: event.target.value })}
+          />
+          {editConflict ? <p role="alert">This note changed while you were editing. Cancel and reopen it to review the latest version.</p> : null}
+          <div className="mobile-library-heading-actions">
+            <button type="button" disabled={pending} onClick={() => setEditDraft(null)}>Cancel</button>
+            <button type="submit" disabled={pending || editConflict || !editDraft.text.trim()}>{pending ? "Saving…" : "Save edit"}</button>
+          </div>
+        </form>
+      ) : null}
+      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending || Boolean(editDraft)} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => setEditDraft({ id: item.id, text: item.text, expectedUpdatedAt: item.updatedAt })} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
     </section>
   );
 }
@@ -261,5 +295,4 @@ function formatDate(value: string) { return new Intl.DateTimeFormat(undefined, {
 function safeMessage(error: unknown) { return error instanceof Error && error.message.length <= 180 ? error.message : "The local library operation failed safely."; }
 function confirmedDelete(message: string, operation: () => Promise<unknown>) { if (window.confirm(message)) void operation(); }
 function promptEdit(label: string, current: string, operation: (value: string) => Promise<unknown>) { const value = window.prompt(label, current); if (value?.trim() && value.trim() !== current) void operation(value.trim()); }
-function promptContentEdit(label: string, current: string, operation: (value: string) => Promise<unknown>) { const value = window.prompt(label, current); if (value !== null && value.trim() && value !== current) void operation(value); }
 function share(capability: NativeShareCapability, item: VectorSavedArtifact | VectorMobileNote | VectorMobileRecord) { void capability.share(savedItemSharePayload(item)).catch((error) => window.alert(safeMessage(error))); }

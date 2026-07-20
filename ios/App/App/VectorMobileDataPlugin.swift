@@ -141,7 +141,8 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
             _ = try self.store.updateNote(
                 id: self.required(call.getString("id"), label: "Note ID"),
                 text: call.getString("text"),
-                tags: call.getArray("tags", String.self)
+                tags: call.getArray("tags", String.self),
+                expectedUpdatedAt: call.getString("expectedUpdatedAt")
             )
             call.resolve(try self.storeDictionary())
         }
