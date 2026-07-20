@@ -133,7 +133,7 @@ Computer-control tools are blocked until the app is in computer-use mode. Comput
 
 The renderer accesses runtime capabilities through a typed platform boundary. Electron's preload bridge remains implemented by the desktop adapter, while native Capacitor iOS resolves to a Keychain- and backend-backed mobile adapter before desktop/browser fallback. See [docs/platform-boundary.md](docs/platform-boundary.md).
 
-The iOS app targets iOS 15+ with Capacitor 8 and Xcode 26+. Native iOS uses a mobile-first Talk, Artifacts, and Activity tab model; Computer mode and Remote Codex remain desktop-only. Simulator setup, secure DEBUG-only bootstrap provisioning, audio lifecycle behavior, and the physical-device proof gate are documented in [docs/ios.md](docs/ios.md). Simulator compile success is not physical-iPhone voice proof.
+The iOS app targets iOS 15+ with Capacitor 8 and Xcode 26+. Native iOS uses a mobile-first Talk, Artifacts, and Activity tab model; Computer mode and Remote Codex remain desktop-only. Phase 5 verifies Realtime/audio lifecycle readiness through automated tests and signing-disabled iPhone Simulator builds, installs, and launches. Physical microphone input, audible output, accessories, interruptions, signing, and device behavior remain unverified and are deferred to Phase 8 or a dedicated pre-release hardware gate. See [docs/ios.md](docs/ios.md).
 
 ## Remote Codex over Tailscale
 

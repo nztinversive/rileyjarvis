@@ -58,6 +58,17 @@ test("the mobile conversation control names every connection and listening state
   assert.equal(connectionControlPresentation("error", "error").detail, "Connection failed");
 });
 
+test("the iOS voice surface remains explicitly labeled as hardware-unverified preview", () => {
+  const app = read("src/App.tsx");
+  const mobile = read("src/components/MobileAppShell.tsx");
+
+  assert.match(app, /Voice preview: lifecycle readiness is Simulator-verified/);
+  assert.match(app, /iPhone microphone and audio hardware remain unverified/);
+  assert.match(mobile, /Mobile companion · Voice preview/);
+  assert.match(mobile, /aria-label="Voice preview status"/);
+  assert.match(mobile, /Simulator-verified only; iPhone microphone and audio hardware are not yet validated/);
+});
+
 test("typed prompts stay intact until a conversation is connected", () => {
   const app = read("src/App.tsx");
   const mobile = read("src/components/MobileAppShell.tsx");

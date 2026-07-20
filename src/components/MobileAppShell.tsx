@@ -106,7 +106,7 @@ export function MobileAppShell({
           </span>
           <div>
             <strong>Vector</strong>
-            <span>Mobile companion</span>
+            <span>Mobile companion · Voice preview</span>
           </div>
         </div>
         <button
@@ -281,6 +281,10 @@ function TalkScreen({
       </div>
 
       <div className="mobile-talk-controls">
+        <aside className="mobile-preview-note" aria-label="Voice preview status">
+          <strong>Voice preview</strong>
+          <span>Simulator-verified only; iPhone microphone and audio hardware are not yet validated.</span>
+        </aside>
         <button
           className={`mobile-connect-button mobile-connect-${control.tone}`}
           type="button"

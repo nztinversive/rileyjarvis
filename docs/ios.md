@@ -1,17 +1,20 @@
 # Vector iOS development
 
-Phase 5 hardens the Capacitor 8 iOS 15+ app for physical-device Realtime voice: explicit microphone permission, native audio-session routing, bounded WebRTC setup, deterministic teardown, interruption and lifecycle handling, typed prompts, and a temporary DEBUG-only Keychain provisioning mechanism.
+Phase 5 delivers Simulator-verified Realtime and audio-lifecycle readiness for the Capacitor 8 iOS 15+ app: explicit microphone permission boundaries, native audio-session routing code, bounded WebRTC setup, deterministic teardown, interruption and lifecycle handling, typed prompts, and a temporary DEBUG-only Keychain provisioning mechanism.
 
-## Current proof status
+## Phase 5 verification status
 
-As of July 19, 2026, the code-readiness lane has Simulator compile coverage, but no physical-iPhone voice proof exists. The current development machine reports:
+As of July 20, 2026, Phase 5 acceptance is intentionally limited to automated coverage and iPhone Simulator build/install/launch readiness. The current development machine provides Xcode 26.6 (build 17F113) with iOS 26.4 and 26.5 Simulator destinations.
 
-- Xcode 26.6 (build 17F113) with iOS Simulator 26.4.1 and 26.5 destinations;
-- no paired physical iPhone visible to Xcode or `devicectl`;
-- no valid local Apple development signing identity or matching profile for `com.rileyjarvis.vector`;
-- no discoverable HTTPS Phase 2 deployment, approved bootstrap token, or configured `VITE_VECTOR_BACKEND_URL`.
+This phase verifies source contracts, native compilation, secure boundaries, teardown/reconnect behavior through injected tests, and representative Simulator installation and launch. It does **not** verify:
 
-These are external proof blockers, not successful device evidence. Do not mark Phase 5 complete, make its pull request ready, or merge it until the physical checklist in this document passes on the exact reviewed commit. A signing-disabled Simulator build proves only that native code compiles.
+- physical microphone capture reaches the model;
+- remote audio is audible through an iPhone speaker, receiver, wired accessory, or Bluetooth route;
+- real-device permission prompts, lock behavior, incoming interruptions, or route changes;
+- development signing, installation, or launch on an iPhone;
+- a live deployed backend, temporary token, or end-to-end Realtime session.
+
+Simulator success must never be described as hardware voice proof. Those checks are deferred to the pre-release hardware gate below, targeted for Phase 8 or a dedicated follow-up. They do not block completion of the Simulator-readiness scope in Phase 5.
 
 ## Security and session architecture
 
@@ -29,22 +32,18 @@ This follows OpenAI's [Realtime WebRTC guidance](https://developers.openai.com/a
 
 Do not put a standard key or bootstrap credential in source, `.env.local`, an Xcode build setting, scheme environment variables, launch arguments, `Info.plist`, the Capacitor config, URLs, localStorage, Preferences, logs, screenshots, or committed files.
 
-## Requirements
+## Phase 5 requirements
 
 - macOS with Node.js 22.12 or newer
 - Xcode 26.0 or newer with its command-line tools selected
-- a paired, trusted physical iPhone visible as an Xcode run destination
-- Developer Mode enabled on iOS 16 or newer
-- an authorized Apple development team, identity, and profile for `com.rileyjarvis.vector`
-- an HTTPS deployment of the Phase 2 service reachable from the phone
-- an approved temporary backend bootstrap credential
-- a server-side standard OpenAI key and policy configuration
+- at least one available iPhone Simulator runtime
+- the repository's exact npm dependency graph
 
-The app uses bundle identifier `com.rileyjarvis.vector`, Swift Package Manager, and the default `capacitor://localhost` WKWebView origin. CocoaPods is not required. If the primary bundle identifier cannot be registered, choose and document an additive Debug-only identifier with the authorized team; do not change the Release identifier merely to bypass signing.
+The app uses bundle identifier `com.rileyjarvis.vector`, Swift Package Manager, and the default `capacitor://localhost` WKWebView origin. CocoaPods is not required.
 
-Apple requires [Developer Mode for locally installed development apps](https://developer.apple.com/news/?id=r1sz7dke). Pair, trust, unlock, and enable Developer Mode before treating a device as available.
+The deferred hardware gate additionally requires a paired iPhone, Developer Mode on iOS 16 or newer, an authorized signing team/profile, a reachable HTTPS backend, an approved temporary bootstrap credential, and server-side OpenAI key/policy configuration. Apple requires [Developer Mode for locally installed development apps](https://developer.apple.com/news/?id=r1sz7dke).
 
-## Backend configuration
+## Backend configuration for live and deferred hardware testing
 
 Deploy `server/` behind HTTPS and configure its secrets only in the deployment environment:
 
@@ -78,7 +77,7 @@ The value must be an HTTPS origin without credentials, path, query, or fragment.
 
 The temporary developer provisioning UI is compiled only when Swift `DEBUG` is defined and is also disabled unless an explicit non-secret launch argument is present. Release builds contain no provisioning UI or Keychain write bridge. The runtime prompt uses a secure text field and writes directly to the device-only Keychain item without passing through JavaScript.
 
-To provision an approved temporary credential:
+This path is implemented and compile-verified in Phase 5, but provisioning and live use on an iPhone remain part of the deferred hardware gate. To provision an approved temporary credential:
 
 1. Open `ios/App/App.xcodeproj`.
 2. Choose **Product > Scheme > Edit Scheme > Run > Arguments**.
@@ -99,17 +98,17 @@ Local deletion does not revoke a still-valid server token; complete both steps. 
 
 Final customer authentication remains Phase 7 and must replace this temporary bootstrap boundary.
 
-## Microphone and audio behavior
+## Implemented microphone and audio behavior
 
-`NSMicrophoneUsageDescription` is present. The Start button is the only path that requests capture. The native flow:
+`NSMicrophoneUsageDescription` is present. The Start button is the only path that requests capture. Automated tests and native compilation verify that the implementation:
 
 - requests microphone permission and reports denied or restricted access with Settings guidance;
 - activates `AVAudioSession` as `playAndRecord` with `voiceChat`;
-- prefers the built-in speaker for hands-free voice while permitting Bluetooth HFP and wired routes;
+- configures the built-in speaker preference for hands-free voice while permitting Bluetooth HFP and wired routes;
 - exposes only sanitized route classes such as speaker, receiver, wired headset, or Bluetooth;
 - allows WKWebView microphone capture only for the exact main-frame `capacitor://localhost` origin and denies camera, combined capture, subframes, and other origins.
 
-The app creates one microphone track, one peer connection, one data channel, and one remote audio element per attempt. It never enables background audio or persistent recording.
+The app is designed to create one microphone track, one peer connection, one data channel, and one remote audio element per attempt. It never enables background audio or persistent recording.
 
 Disconnect stops all input tracks, closes the data and peer channels, aborts pending backend/SDP requests, removes network/media listeners, pauses and removes remote audio, closes the output meter, deactivates the native audio session, and permits a fresh connection attempt.
 
@@ -126,7 +125,9 @@ The app tears down without automatic reconnection when:
 
 Foreground, unlock, route restoration, and interruption end never reacquire the microphone automatically. The user must tap Start again, which mints a fresh Realtime session.
 
-## Install, sync, and Simulator compile
+These are verified implementation contracts, not observations of real iPhone audio hardware. Speaker audibility, Bluetooth/wired routing, echo behavior, physical interruption delivery, and microphone capture remain unverified until the deferred hardware gate.
+
+## Install, sync, compile, and launch in Simulator
 
 Install the exact dependency graph and sync native files:
 
@@ -147,11 +148,15 @@ The complete signing-disabled Simulator compile is:
 npm run ios:verify
 ```
 
-Without a deployed backend and Keychain bootstrap credential, tapping Start must fail closed with a clear setup message. Simulator UI, compile success, or a launched shell is not physical Realtime voice proof.
+For representative UI coverage, install and launch the resulting Debug app on a current full-size iPhone Simulator and a compact iPhone Simulator. Confirm that Talk, Artifacts, and Activity render, Computer and Remote Codex remain absent, the Talk screen is labeled **Voice preview**, and startup without backend provisioning fails closed.
 
-## Physical-iPhone build and proof
+Without a deployed backend and Keychain bootstrap credential, tapping Start must fail closed with a clear setup message. Simulator UI, compile success, installation, and launch prove only Simulator readiness—not microphone input, audible output, accessories, real interruptions, signing, or physical-iPhone behavior.
 
-Before building, confirm the device appears without recording its UDID:
+## Deferred pre-release physical-iPhone hardware gate
+
+This gate is targeted for Phase 8 or a dedicated pre-release follow-up. It is required before presenting iOS voice as hardware-validated, enabling a production release, TestFlight distribution, or removing the in-app **Voice preview** disclosure. It is not part of Phase 5 Simulator-readiness acceptance.
+
+Before the deferred run, confirm the device appears without recording its UDID:
 
 ```bash
 xcrun devicectl list devices
@@ -165,7 +170,7 @@ In Xcode, select the App target, choose the authorized team under **Signing & Ca
 
 Record only the device model, iOS version, app build, exact Git commit, date, and pass/fail outcomes. Do not retain screenshots, UDIDs, profiles, certificates, console archives, tokens, transcripts, or audio.
 
-The same exact commit must pass all of the following:
+The same exact release candidate must pass all of the following:
 
 - [ ] first-run microphone grant begins only after tapping Start
 - [ ] backend session issuance succeeds and the UI reaches connected state
@@ -184,7 +189,7 @@ The same exact commit must pass all of the following:
 - [ ] sanitized console inspection contains no SDP, authorization headers, credentials, keys, transcripts, or raw audio
 - [ ] the temporary bootstrap credential is deleted locally and revoked server-side after proof
 
-Media- or lifecycle-affecting changes after this run invalidate the proof. Rerun the physical checklist on the new head before review or merge.
+Media- or lifecycle-affecting changes after this run invalidate the hardware evidence. Rerun the physical checklist on the new release candidate before removing preview status or releasing.
 
 ## Troubleshooting
 
@@ -220,4 +225,4 @@ Also scan tracked changes, generated assets, bundle output, and captured logs fo
 
 ## Deferred work
 
-Phase 5 does not add background audio, always-on recording, production accounts, analytics, push notifications, subscriptions, quotas, cloud sync, TestFlight, or App Store submission. Phase 7 customer authentication remains explicitly deferred. The current repository contains no authoritative Phase 6 or Phase 8 contract, so those phases must be scoped separately rather than inferred here.
+Phase 5 does not add hardware voice proof, background audio, always-on recording, production accounts, analytics, push notifications, subscriptions, quotas, cloud sync, TestFlight, or App Store submission. Phase 7 customer authentication remains explicitly deferred. Physical-iPhone voice proof is assigned to Phase 8 or a dedicated pre-release follow-up; the remaining Phase 6 and Phase 8 scope must still be defined separately rather than inferred here.

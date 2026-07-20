@@ -11,6 +11,8 @@ type VectorTheme = "day" | "night";
 const autoSleepMs = 5 * 60 * 1000;
 const autoSleepMessage = "Went to standby after 5 minutes of silence. Connect to resume.";
 const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
+const nativeVoicePreviewMessage =
+  "Voice preview: lifecycle readiness is Simulator-verified; iPhone microphone and audio hardware remain unverified.";
 const vectorPlatform = getVectorPlatform();
 
 function initialTheme(): VectorTheme {
@@ -37,9 +39,18 @@ export default function App() {
   const [showTypeInput, setShowTypeInput] = useState(false);
   const [mouthShape, setMouthShape] = useState<MouthShape>({ open: 0, width: 0.18, round: 0, teeth: 0 });
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([
-    newEntry("system", platformAvailable ? "Vector is ready. Connect voice, then talk naturally." : missingElectronBridgeMessage),
+    newEntry(
+      "system",
+      isNativeMobile
+        ? nativeVoicePreviewMessage
+        : platformAvailable
+          ? "Vector is ready. Connect voice, then talk naturally."
+          : missingElectronBridgeMessage,
+    ),
   ]);
-  const [status, setStatus] = useState(platformAvailable ? "Idle" : missingElectronBridgeMessage);
+  const [status, setStatus] = useState(
+    isNativeMobile ? nativeVoicePreviewMessage : platformAvailable ? "Idle" : missingElectronBridgeMessage,
+  );
   const [textPrompt, setTextPrompt] = useState("");
   const [uptime, setUptime] = useState("STANDBY");
   const [theme, setTheme] = useState<VectorTheme>(initialTheme);
