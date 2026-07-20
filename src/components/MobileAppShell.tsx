@@ -27,8 +27,9 @@ import {
   mobileTabs,
   type MobileTab,
 } from "../mobile/navigation";
-import type { VectorArtifact } from "../platform";
+import type { MobileDataCapability, NativeShareCapability, VectorArtifact } from "../platform";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { MobileLibrary } from "./MobileLibrary";
 import { VectorOrb } from "./VectorOrb";
 
 type MobileAppShellProps = {
@@ -48,6 +49,8 @@ type MobileAppShellProps = {
   onTextPromptChange: (value: string) => void;
   onToggleTheme: () => void;
   onToggleTypeInput: () => void;
+  mobileData?: MobileDataCapability;
+  nativeShare?: NativeShareCapability;
 };
 
 const tabIcons = {
@@ -73,6 +76,8 @@ export function MobileAppShell({
   onTextPromptChange,
   onToggleTheme,
   onToggleTypeInput,
+  mobileData,
+  nativeShare,
 }: MobileAppShellProps) {
   const [{ activeTab }, dispatchNavigation] = useReducer(mobileNavigationReducer, {
     activeTab: "talk",
@@ -147,15 +152,11 @@ export function MobileAppShell({
             <h1 className="sr-only" ref={headingRef} tabIndex={-1}>
               Artifacts
             </h1>
-            <ArtifactPanel
-              artifact={artifact}
-              visible
-              fullscreen={false}
-              presentation="mobile"
-              onToggleVisible={() => selectTab("talk")}
-              onToggleFullscreen={() => undefined}
-              onOpenExternalUrl={onOpenExternalUrl}
-            />
+            {mobileData ? (
+              <MobileLibrary artifact={artifact} mobileData={mobileData} nativeShare={nativeShare} onOpenExternalUrl={onOpenExternalUrl} />
+            ) : (
+              <ArtifactPanel artifact={artifact} visible fullscreen={false} presentation="mobile" onToggleVisible={() => selectTab("talk")} onToggleFullscreen={() => undefined} onOpenExternalUrl={onOpenExternalUrl} />
+            )}
           </section>
         ) : null}
 

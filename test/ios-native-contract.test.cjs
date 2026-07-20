@@ -120,6 +120,56 @@ test("temporary credential provisioning is launch-gated, DEBUG-only, and device-
   assert.match(project, /VectorDebugCredentialProvisioner\.swift in Sources/);
 });
 
+test("native mobile data is protected, atomic, bounded, recoverable, and registered", () => {
+  const core = read("ios/App/VectorMobileDataCore/Sources/VectorMobileDataCore/VectorMobileDataCore.swift");
+  const plugin = read("ios/App/App/VectorMobileDataPlugin.swift");
+  const share = read("ios/App/App/VectorSharePlugin.swift");
+  const controller = read("ios/App/App/VectorBridgeViewController.swift");
+  const project = read("ios/App/App.xcodeproj/project.pbxproj");
+
+  assert.match(core, /DispatchQueue\(label: "com\.rileyjarvis\.vector\.mobile-data"\)/);
+  assert.match(core, /\.atomic/);
+  assert.match(core, /FileProtectionType\.complete/);
+  assert.match(core, /isExcludedFromBackup = true/);
+  assert.match(core, /schemaVersion/);
+  assert.match(core, /maxFileBytes/);
+  assert.match(core, /corrupt-/);
+  assert.match(core, /moveItem\(at: storeURL, to: backup\)/);
+  assert.match(core, /contractEncoder\.encode\(fields\)/);
+  assert.doesNotMatch(core + plugin, /UserDefaults|Preferences|localStorage/);
+  assert.match(plugin, /jsName = "VectorMobileData"/);
+  assert.match(plugin, /CAPPluginMethod\(name: "createNote"/);
+  assert.match(plugin, /CAPPluginMethod\(name: "confirmDeletion"/);
+  assert.match(plugin, /UIAlertController/);
+  assert.match(plugin, /style: \.destructive/);
+  assert.match(plugin, /confirmationInProgress/);
+  assert.match(plugin, /presentedViewController == nil/);
+  assert.match(plugin, /CONFIRMATION_IN_PROGRESS/);
+  assert.match(plugin, /deleteNote\(ifUnchanged: item\)/);
+  assert.match(plugin, /deleteRecord\(ifUnchanged: item\)/);
+  assert.match(plugin, /deleteArtifact\(ifUnchanged: item\)/);
+  assert.match(core, /case itemChanged/);
+  assert.match(plugin, /alert\.dismiss\([\s\S]*?confirmationInProgress = false[\s\S]*?call\.resolve/);
+  assert.match(plugin, /\{ \[weak alert\] confirmed in/);
+  assert.match(plugin, /CAPPluginMethod\(name: "createRecord"/);
+  assert.match(plugin, /CAPPluginMethod\(name: "saveArtifact"/);
+  assert.match(share, /UIActivityViewController/);
+  assert.match(share, /VectorExports/);
+  assert.match(share, /override func load\(\)[\s\S]*?removeItem\(at: exportRoot\)/);
+  assert.match(share, /shareInProgress/);
+  assert.match(share, /SHARE_IN_PROGRESS/);
+  assert.match(core, /components\.scheme\?\.lowercased\(\) == "https"/);
+  assert.match(share, /components\.scheme\?\.lowercased\(\) == "https"/);
+  assert.match(share, /\.completeFileProtection/);
+  assert.match(share, /completionWithItemsHandler[\s\S]*?removeItem/);
+  assert.match(controller, /registerPluginInstance\(VectorMobileDataPlugin\(\)\)/);
+  assert.match(controller, /registerPluginInstance\(VectorSharePlugin\(\)\)/);
+  assert.match(project, /VectorMobileDataCore\.swift in Sources/);
+  assert.match(project, /VectorMobileDataPlugin\.swift in Sources/);
+  assert.match(project, /VectorSharePlugin\.swift in Sources/);
+  assert.match(read("src/components/MobileLibrary.tsx"), /promptContentEdit[\s\S]*?void operation\(value\)/);
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }

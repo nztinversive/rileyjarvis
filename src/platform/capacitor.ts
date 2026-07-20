@@ -8,6 +8,7 @@ import type {
   VoiceSessionCapability,
   VoiceSessionEvent,
 } from "./types";
+import type { IOSVectorPlatformDependencies } from "./ios";
 
 const secureStorage = registerPlugin<IOSSecureStorageBridge>("VectorSecureStorage");
 
@@ -25,6 +26,8 @@ type IOSAudioSessionBridge = {
 };
 
 const audioSession = registerPlugin<IOSAudioSessionBridge>("VectorAudioSession");
+const mobileData = registerPlugin<NonNullable<IOSVectorPlatformDependencies["mobileData"]>>("VectorMobileData");
+const nativeShare = registerPlugin<NonNullable<IOSVectorPlatformDependencies["nativeShare"]>>("VectorShare");
 
 export function getCapacitorIOSVectorPlatform(): VectorPlatform | null {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return null;
@@ -57,6 +60,8 @@ export function getCapacitorIOSVectorPlatform(): VectorPlatform | null {
     secureStorage,
     appLifecycle,
     voiceSession,
+    mobileData,
+    nativeShare,
     openExternalUrl: async (url) => {
       await Browser.open({ url, presentationStyle: "popover" });
     },

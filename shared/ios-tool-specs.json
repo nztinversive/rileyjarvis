@@ -17,23 +17,170 @@
   },
   {
     "type": "function",
+    "name": "note_add",
+    "description": "Add a bounded note to Vector's private local iOS library.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 12000 },
+        "tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "minLength": 1, "maxLength": 48 } }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "note_list",
+    "description": "List the newest notes from Vector's private local iOS library.",
+    "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+  },
+  {
+    "type": "function",
+    "name": "note_update",
+    "description": "Update bounded text or tags on one local iOS note.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 8, "maxLength": 80 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 12000 },
+        "tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "minLength": 1, "maxLength": 48 } }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "note_delete",
+    "description": "Delete one local iOS note only after explicit user confirmation.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 8, "maxLength": 80 },
+        "confirmed": { "type": "boolean" }
+      },
+      "required": ["id", "confirmed"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "records_create",
+    "description": "Create a structured record in a named private local iOS collection.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "collection": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "data": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["collection", "title"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "records_search",
+    "description": "Deterministically search one private local iOS record collection.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "collection": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "query": { "type": "string", "maxLength": 160 }
+      },
+      "required": ["collection"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "records_update",
+    "description": "Update bounded title or structured data fields on one local iOS record.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 8, "maxLength": 80 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "data": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "records_delete",
+    "description": "Delete one local iOS record only after explicit user confirmation.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 8, "maxLength": 80 },
+        "confirmed": { "type": "boolean" }
+      },
+      "required": ["id", "confirmed"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "artifact_save",
+    "description": "Explicitly save one supported current artifact to the private local iOS library.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "kind": { "type": "string", "enum": ["text", "markdown", "code", "table", "notes", "mermaid", "image"] },
+        "content": { "type": "string", "minLength": 1, "maxLength": 64000 },
+        "language": { "type": "string", "minLength": 1, "maxLength": 32 }
+      },
+      "required": ["title", "kind", "content"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "artifact_library_list",
+    "description": "List the newest explicitly saved artifacts in the private local iOS library.",
+    "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+  },
+  {
+    "type": "function",
+    "name": "artifact_unsave",
+    "description": "Remove one saved local iOS artifact only after explicit user confirmation.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 8, "maxLength": 80 },
+        "confirmed": { "type": "boolean" }
+      },
+      "required": ["id", "confirmed"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
     "name": "artifact_show",
     "description": "Show iOS-safe text, Markdown, code, table, note, Mermaid, image, or progress content in the artifact panel.",
     "parameters": {
       "type": "object",
       "properties": {
         "title": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
         },
         "kind": {
           "type": "string",
           "enum": ["text", "markdown", "code", "table", "notes", "mermaid", "image", "imageLoading", "progress"]
         },
         "content": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 64000
         },
         "language": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 32
         },
         "fullscreen": {
           "type": "boolean"

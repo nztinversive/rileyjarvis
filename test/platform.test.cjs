@@ -6,6 +6,20 @@ const test = require("node:test");
 const ts = require("typescript");
 const iosToolSpecAllowlist = require("../shared/ios-tool-specs.json");
 
+require.extensions[".ts"] = function compileTypeScript(module, filename) {
+  const source = fs.readFileSync(filename, "utf8");
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+      resolveJsonModule: true,
+    },
+    fileName: filename,
+  }).outputText;
+  module._compile(output, filename);
+};
+
 const { createElectronVectorPlatform } = loadTypeScriptModule("../src/platform/electron.ts");
 const { createIOSVectorPlatform } = loadTypeScriptModule("../src/platform/ios.ts");
 const { resolveVectorPlatform } = loadTypeScriptModule("../src/platform/resolver.ts");
@@ -229,7 +243,11 @@ test("the iOS adapter exposes only mobile tools and safely rejects desktop tools
 
   assert.deepEqual(
     specs.map((tool) => tool.name),
-    ["set_mode", "artifact_show", "show_menu"],
+    [
+      "set_mode", "note_add", "note_list", "note_update", "note_delete",
+      "records_create", "records_search", "records_update", "records_delete",
+      "artifact_save", "artifact_library_list", "artifact_unsave", "artifact_show", "show_menu",
+    ],
   );
   assert.deepEqual(specs, iosToolSpecAllowlist);
   assert.equal(specs.some((tool) => tool.name.startsWith("remote_codex")), false);
@@ -245,6 +263,20 @@ test("the iOS adapter exposes only mobile tools and safely rejects desktop tools
     await platform.executeTool({
       name: "artifact_show",
       arguments: { title: "Local image", kind: "image", content: "/Users/example/secret.png" },
+    }),
+    { ok: false, error: "That artifact is not available on iOS." },
+  );
+  assert.deepEqual(
+    await platform.executeTool({
+      name: "artifact_show",
+      arguments: { title: "Credentialed image", kind: "image", content: "https://token@example.com/private.png" },
+    }),
+    { ok: false, error: "That artifact is not available on iOS." },
+  );
+  assert.deepEqual(
+    await platform.executeTool({
+      name: "artifact_show",
+      arguments: { title: "Oversized", kind: "text", content: "x".repeat(64_001) },
     }),
     { ok: false, error: "That artifact is not available on iOS." },
   );
@@ -266,6 +298,119 @@ test("the iOS adapter opens only HTTPS links through its native browser boundary
   await platform.openExternalUrl("https://example.com/path");
   await assert.rejects(platform.openExternalUrl("file:///Users/example/secret"), /secure web links/);
   assert.deepEqual(opened, ["https://example.com/path"]);
+});
+
+test("the iOS adapter selects typed mobile data and share capabilities with bounded confirmation-gated tools", async () => {
+  let store = { version: 1, notes: [], records: [], artifacts: [] };
+  let deletes = 0;
+  let updates = 0;
+  let nativeConfirmation = false;
+  const confirmationRequests = [];
+  const now = "2026-07-20T12:00:00Z";
+  const mobileData = {
+    async list() { return structuredClone(store); },
+    async confirmDeletion(input) {
+      confirmationRequests.push(input);
+      if (!nativeConfirmation) return { confirmed: false };
+      deletes += 1;
+      if (input.kind === "note") store.notes = store.notes.filter((item) => item.id !== input.id);
+      if (input.kind === "record") store.records = store.records.filter((item) => item.id !== input.id);
+      if (input.kind === "saved artifact") store.artifacts = store.artifacts.filter((item) => item.id !== input.id);
+      return { confirmed: true, store: structuredClone(store) };
+    },
+    async createNote(input) {
+      store.notes.push(
+        { id: "note-rival", text: "Concurrent note", tags: [], createdAt: now, updatedAt: now },
+        { id: "note-0001", text: input.text, tags: input.tags || [], createdAt: now, updatedAt: now },
+      );
+      return { store: structuredClone(store), itemId: "note-0001" };
+    },
+    async updateNote() { updates += 1; return structuredClone(store); },
+    async deleteNote({ id }) { deletes += 1; store.notes = store.notes.filter((item) => item.id !== id); return structuredClone(store); },
+    async createRecord(input) {
+      store.records.push(
+        { id: "record-rival", collection: input.collection, title: "Concurrent record", data: {}, createdAt: now, updatedAt: now },
+        { id: "record-0001", collection: input.collection, title: input.title, data: input.data || {}, createdAt: now, updatedAt: now },
+      );
+      return { store: structuredClone(store), itemId: "record-0001" };
+    },
+    async searchRecords({ collection, query = "", limit = 20 }) {
+      return { records: structuredClone(store.records.filter((item) => item.collection === collection && item.title.toLowerCase().includes(query.toLowerCase())).slice(0, limit)) };
+    },
+    async updateRecord() { updates += 1; return structuredClone(store); },
+    async deleteRecord() { return structuredClone(store); },
+    async saveArtifact(input) {
+      store.artifacts.push(
+        { id: "artifact-rival", title: "Concurrent artifact", kind: "text", content: "Other", createdAt: now, updatedAt: now },
+        { id: "artifact-0001", ...input, createdAt: now, updatedAt: now },
+      );
+      return { store: structuredClone(store), itemId: "artifact-0001" };
+    },
+    async deleteArtifact() { return structuredClone(store); },
+  };
+  const shared = [];
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: secureStorageWith("bootstrap-credential"),
+    mobileData,
+    nativeShare: { async share(payload) { shared.push(payload); return { completed: false }; } },
+    async fetchImpl() { throw new Error("not used"); },
+  });
+
+  assert.ok(platform.mobileData);
+  assert.ok(platform.nativeShare);
+  const observedStores = [];
+  const unsubscribeMobileData = platform.mobileData.subscribe((nextStore) => observedStores.push(nextStore));
+  assert.equal((await platform.executeTool({ name: "note_add", arguments: { text: "Remember", tags: ["work"] } })).note.id, "note-0001");
+  assert.equal(observedStores.at(-1).notes[0].text, "Remember");
+  unsubscribeMobileData();
+  assert.equal((await platform.executeTool({ name: "records_create", arguments: { collection: "tasks", title: "Ship", data: { done: false } } })).record.id, "record-0001");
+  assert.equal(observedStores.length, 1);
+  assert.equal((await platform.executeTool({ name: "records_search", arguments: { collection: "tasks", query: "ship" } })).records.length, 1);
+  assert.equal((await platform.executeTool({ name: "artifact_save", arguments: { title: "Plan", kind: "markdown", content: "# Plan" } })).savedArtifact.id, "artifact-0001");
+  assert.equal((await platform.executeTool({ name: "note_delete", arguments: { id: "note-0001", confirmed: false } })).requiresConfirmation, true);
+  assert.equal(deletes, 0);
+  assert.equal((await platform.executeTool({ name: "note_delete", arguments: { id: "note-0001", confirmed: true } })).ok, false);
+  assert.equal(deletes, 0);
+  nativeConfirmation = true;
+  assert.equal((await platform.executeTool({ name: "note_delete", arguments: { id: "note-0001", confirmed: true } })).ok, true);
+  assert.equal(deletes, 1);
+  assert.deepEqual(confirmationRequests, [
+    { kind: "note", id: "note-0001" },
+    { kind: "note", id: "note-0001" },
+  ]);
+  assert.deepEqual(await platform.nativeShare.share({ title: "Plan", text: "# Plan" }), { completed: false });
+  assert.deepEqual(shared, [{ title: "Plan", text: "# Plan" }]);
+
+  assert.match(
+    (await platform.executeTool({ name: "note_update", arguments: { id: "note-0001" } })).error,
+    /must include text or tags/,
+  );
+  assert.match(
+    (await platform.executeTool({ name: "records_update", arguments: { id: "record-0001" } })).error,
+    /must include a title or structured data/,
+  );
+  assert.equal(updates, 0);
+
+  const noteCount = store.notes.length;
+  await assert.rejects(
+    platform.mobileData.createNote({ text: "Should not persist", tags: ["x".repeat(49)] }),
+    /between 1 and 48 characters/,
+  );
+  assert.equal(store.notes.length, noteCount);
+
+  store.artifacts = Array.from({ length: 20 }, (_, index) => ({
+    id: `artifact-${String(index).padStart(4, "0")}`,
+    title: `Large ${index}`,
+    kind: "text",
+    content: "private-content-" + "x".repeat(63_000),
+    createdAt: now,
+    updatedAt: now,
+  }));
+  const libraryResult = await platform.executeTool({ name: "artifact_library_list", arguments: {} });
+  assert.equal(libraryResult.savedArtifacts.length, 20);
+  assert.ok(JSON.stringify(libraryResult).length < 40_000);
+  assert.equal(JSON.stringify(libraryResult).includes("x".repeat(1_000)), false);
 });
 
 test("the iOS adapter exposes the injected native voice-session lifecycle without widening desktop capabilities", async () => {
@@ -392,6 +537,15 @@ test("disconnecting an in-flight session prevents native setup from continuing",
 });
 
 function loadTypeScriptModule(relativePath) {
+  const previous = Module._extensions[".ts"];
+  Module._extensions[".ts"] = (loaded, filename) => {
+    const source = fs.readFileSync(filename, "utf8");
+    const output = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+      fileName: filename,
+    }).outputText;
+    loaded._compile(output, filename);
+  };
   const filename = path.resolve(__dirname, relativePath);
   const source = fs.readFileSync(filename, "utf8");
   const output = ts.transpileModule(source, {
@@ -404,8 +558,13 @@ function loadTypeScriptModule(relativePath) {
   const loaded = new Module(filename, module);
   loaded.filename = filename;
   loaded.paths = Module._nodeModulePaths(path.dirname(filename));
-  loaded._compile(output, filename);
-  return loaded.exports;
+  try {
+    loaded._compile(output, filename);
+    return loaded.exports;
+  } finally {
+    if (previous) Module._extensions[".ts"] = previous;
+    else delete Module._extensions[".ts"];
+  }
 }
 
 function secureStorageWith(value) {

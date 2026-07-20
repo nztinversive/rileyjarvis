@@ -7,6 +7,8 @@ final class VectorBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(VectorSecureStoragePlugin())
         bridge?.registerPluginInstance(VectorAudioSessionPlugin())
+        bridge?.registerPluginInstance(VectorMobileDataPlugin())
+        bridge?.registerPluginInstance(VectorSharePlugin())
 
         if let webView {
             let delegate = VectorWebViewUIDelegate(forwarding: webView.uiDelegate)

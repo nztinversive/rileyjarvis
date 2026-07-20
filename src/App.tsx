@@ -305,6 +305,8 @@ export default function App() {
         onTextPromptChange={setTextPrompt}
         onToggleTheme={toggleTheme}
         onToggleTypeInput={() => setShowTypeInput((value) => !value)}
+        mobileData={vectorPlatform?.mobileData}
+        nativeShare={vectorPlatform?.nativeShare}
       />
     );
   }
