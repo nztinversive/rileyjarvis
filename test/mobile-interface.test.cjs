@@ -113,6 +113,7 @@ test("native lifecycle and audio events disconnect without automatic microphone 
 
   assert.match(app, /vectorPlatform\.appLifecycle\.subscribe/);
   assert.match(app, /vectorPlatform\.voiceSession\.subscribe/);
+  assert.match(app, /state === "error" && clientRef\.current === client/);
   assert.match(app, /if \(event\.shouldDisconnect && clientRef\.current\)/);
   assert.match(app, /clientRef\.current\.disconnect\(\)/);
   assert.match(app, /clientRef\.current = null/);

@@ -176,6 +176,9 @@ export default function App() {
     const client = new VectorRealtimeClient(vectorPlatform, {
       onConnectionState: (state) => {
         setConnectionState(state);
+        if (state === "error" && clientRef.current === client) {
+          clientRef.current = null;
+        }
         if (state === "connected") {
           lastActivityRef.current = Date.now();
           playConnectSound();
