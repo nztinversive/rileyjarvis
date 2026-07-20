@@ -79,15 +79,14 @@ export function MobileAppShell({
   });
   const [unseenArtifact, setUnseenArtifact] = useState(false);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
-  const artifactKey = artifact ? `${artifact.kind}:${artifact.title}:${artifact.content.length}` : "";
-  const previousArtifactKey = useRef(artifactKey);
+  const previousArtifact = useRef(artifact);
 
   useEffect(() => {
-    if (artifactKey && artifactKey !== previousArtifactKey.current && activeTab !== "artifacts") {
+    if (artifact && artifact !== previousArtifact.current && activeTab !== "artifacts") {
       setUnseenArtifact(true);
     }
-    previousArtifactKey.current = artifactKey;
-  }, [activeTab, artifactKey]);
+    previousArtifact.current = artifact;
+  }, [activeTab, artifact]);
 
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true });

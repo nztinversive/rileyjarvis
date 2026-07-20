@@ -32,6 +32,15 @@ test("native mobile navigation exposes the three intentional primary destination
   assert.equal(mobileNavigationReducer(activity, { type: "select", tab: "activity" }), activity);
 });
 
+test("mobile artifact alerts track each artifact update without lossy content-length keys", () => {
+  const mobile = read("src/components/MobileAppShell.tsx");
+
+  assert.match(mobile, /const previousArtifact = useRef\(artifact\)/);
+  assert.match(mobile, /artifact !== previousArtifact\.current/);
+  assert.match(mobile, /previousArtifact\.current = artifact/);
+  assert.doesNotMatch(mobile, /artifact\.content\.length/);
+});
+
 test("the mobile conversation control names every connection and listening state", () => {
   assert.deepEqual(connectionControlPresentation("idle", "idle"), {
     action: "connect",
