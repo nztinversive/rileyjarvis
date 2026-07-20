@@ -10,6 +10,7 @@ export type {
   RemoteCodexTask,
   VectorArtifact,
   VectorPlatform,
+  VectorPresentation,
   VectorToolCall,
   VectorToolResult,
   VectorToolSpec,

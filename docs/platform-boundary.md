@@ -4,7 +4,8 @@ The React renderer and Realtime client depend on the typed `VectorPlatform` cont
 
 - creating a short-lived Realtime credential;
 - listing and executing platform-provided tool schemas;
-- optionally subscribing to Remote Codex lifecycle events.
+- optionally subscribing to Remote Codex lifecycle events;
+- selecting a desktop or native-mobile presentation.
 
 ## Desktop adapter
 
@@ -14,12 +15,14 @@ Electron continues to provide the existing tool schemas and Remote Codex lifecyc
 
 ## iOS adapter
 
-`src/platform/capacitor.ts` detects a native Capacitor iOS runtime before the Electron/browser fallback and composes the testable adapter in `src/platform/ios.ts`. The iOS adapter omits Remote Codex and exposes only display mode, iOS-safe artifacts, and the mobile capability menu. The adapter and session service both consume the canonical allowlist in `shared/ios-tool-specs.json`, so the service registers exactly those schemas when it issues the Realtime credential. Unknown and desktop-only tools return safe unsupported results; their absence does not block Realtime startup.
+`src/platform/capacitor.ts` detects a native Capacitor iOS runtime before the Electron/browser fallback and composes the testable adapter in `src/platform/ios.ts`. The adapter sets `presentation: "native-mobile"` at that platform boundary. `App` uses that one reliable signal to select the responsive mobile shell; shared state, artifacts, and Realtime logic remain platform-neutral. The Electron adapter sets `presentation: "desktop"`, preserving its titlebar, modes, split panes, keyboard shortcuts, Computer controls, and Remote Codex lifecycle.
+
+The iOS adapter omits Remote Codex and exposes only display mode, iOS-safe artifacts, and the mobile capability menu. The adapter and session service both consume the canonical allowlist in `shared/ios-tool-specs.json`, so the service registers exactly those schemas when it issues the Realtime credential. Unknown and desktop-only tools return safe unsupported results; their absence does not block Realtime startup. The mobile shell likewise has no Computer or Remote Codex entry point, while `App` rejects a desktop Computer-mode selection at the native boundary as defense in depth.
 
 `createRealtimeCredential()` reads the temporary bootstrap bearer credential from the native `VectorSecureStorage` Keychain plugin and sends an authenticated empty JSON request to `POST /api/realtime/session`. The backend origin comes from the non-secret `VITE_VECTOR_BACKEND_URL` build setting and must be HTTPS. The adapter validates and returns only `{ value, expiresAt }`, bounds the request, sanitizes errors, and does not log either credential.
 
 The service owns the model, instructions, audio policy, credential TTL, safety identifier, and upstream OpenAI request; the adapter sends none of those values. The short-lived Realtime credential exists in JavaScript only while the existing WebRTC connection is established. The iOS lifecycle boundary disconnects the session when the app becomes inactive, and no background audio mode is enabled.
 
-Bootstrap bearer tokens currently map to server-owned opaque subjects. That is deliberately narrower than a final account system and must be replaced at the authentication interface by Sign in with Apple or another identity provider in a later phase. The native bridge provides Keychain `get`, `set`, and `delete` only; it never falls back to Preferences. Mobile navigation redesign, physical-device microphone/WebRTC proof, subscriptions, feature/data sync, and remote tool execution remain deferred.
+Bootstrap bearer tokens currently map to server-owned opaque subjects. That is deliberately narrower than a final account system and must be replaced at the authentication interface by Sign in with Apple or another identity provider in a later phase. The native bridge provides Keychain `get`, `set`, and `delete` only; it never falls back to Preferences. Physical-device microphone/WebRTC proof, subscriptions, feature/data sync, and remote tool execution remain deferred.
 
-The Electron adapter and its local `realtime:create-token` handler are unchanged in Phase 2. Desktop credentials, tool schemas, Remote Codex, and local runtime behavior continue to use the existing context-isolated Electron flow.
+The Electron adapter and its local `realtime:create-token` handler remain unchanged. Desktop credentials, tool schemas, Remote Codex, and local runtime behavior continue to use the existing context-isolated Electron flow.

@@ -36,6 +36,7 @@ test("the Electron adapter maps the legacy preload bridge to VectorPlatform", as
   };
 
   const platform = createElectronVectorPlatform(bridge);
+  assert.equal(platform.presentation, "desktop");
   assert.deepEqual(await platform.createRealtimeCredential(), { value: "client-secret", expiresAt: 123 });
   assert.equal((await platform.listToolSpecs())[0].name, "show_menu");
   assert.deepEqual(await platform.executeTool({ name: "show_menu", arguments: {} }), { ok: true, message: "done" });
@@ -99,6 +100,7 @@ test("the iOS adapter sends the exact backend session request and returns only c
     },
   });
 
+  assert.equal(platform.presentation, "native-mobile");
   assert.deepEqual(await platform.createRealtimeCredential(), { value: "ephemeral-value", expiresAt: 1234 });
   assert.deepEqual(calls[0], ["keychain", "get"]);
   assert.equal(calls[1][0], "fetch");

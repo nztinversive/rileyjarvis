@@ -18,6 +18,7 @@ export function createElectronVectorPlatform(bridge: ElectronPreloadBridge): Vec
   const subscribeToRemoteCodexLifecycle = bridge.onRemoteCodexEvent;
 
   return {
+    presentation: "desktop",
     createRealtimeCredential: () => bridge.createRealtimeToken(),
     executeTool: (toolCall) => bridge.executeTool(toolCall),
     listToolSpecs: () => bridge.getToolSpecs(),
