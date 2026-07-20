@@ -2,14 +2,15 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, Moon, PanelRight, Send, Sun, Zap } from "lucide-react";
 import { ArtifactPanel } from "./components/ArtifactPanel";
 import { VectorOrb } from "./components/VectorOrb";
-import { newEntry, RickyRealtimeClient, type MouthShape, type RickyConnectionState, type RickyMood, type TranscriptEntry } from "./lib/realtime";
-import type { RickyArtifact, RickyRemoteCodexEvent } from "./vite-env";
+import { newEntry, VectorRealtimeClient, type MouthShape, type TranscriptEntry, type VectorConnectionState, type VectorMood } from "./lib/realtime";
+import { getVectorPlatform, type RemoteCodexLifecycleEvent, type VectorArtifact } from "./platform";
 
-type RickyMode = "display" | "computer";
+type VectorMode = "display" | "computer";
 type VectorTheme = "day" | "night";
 const autoSleepMs = 5 * 60 * 1000;
 const autoSleepMessage = "Went to standby after 5 minutes of silence. Connect to resume.";
 const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
+const vectorPlatform = getVectorPlatform();
 
 function initialTheme(): VectorTheme {
   try {
@@ -23,24 +24,24 @@ function initialTheme(): VectorTheme {
 }
 
 export default function App() {
-  const electronBridgeAvailable = Boolean(window.ricky);
-  const [connectionState, setConnectionState] = useState<RickyConnectionState>("idle");
-  const [mood, setMood] = useState<RickyMood>("idle");
-  const [mode, setMode] = useState<RickyMode>("display");
-  const [artifact, setArtifact] = useState<RickyArtifact | null>(null);
+  const platformAvailable = Boolean(vectorPlatform);
+  const [connectionState, setConnectionState] = useState<VectorConnectionState>("idle");
+  const [mood, setMood] = useState<VectorMood>("idle");
+  const [mode, setMode] = useState<VectorMode>("display");
+  const [artifact, setArtifact] = useState<VectorArtifact | null>(null);
   const [artifactVisible, setArtifactVisible] = useState(true);
   const [artifactFullscreen, setArtifactFullscreen] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showTypeInput, setShowTypeInput] = useState(false);
   const [mouthShape, setMouthShape] = useState<MouthShape>({ open: 0, width: 0.18, round: 0, teeth: 0 });
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([
-    newEntry("system", electronBridgeAvailable ? "Vector is ready. Connect voice, then talk naturally." : missingElectronBridgeMessage),
+    newEntry("system", platformAvailable ? "Vector is ready. Connect voice, then talk naturally." : missingElectronBridgeMessage),
   ]);
-  const [status, setStatus] = useState(electronBridgeAvailable ? "Idle" : missingElectronBridgeMessage);
+  const [status, setStatus] = useState(platformAvailable ? "Idle" : missingElectronBridgeMessage);
   const [textPrompt, setTextPrompt] = useState("");
   const [uptime, setUptime] = useState("STANDBY");
   const [theme, setTheme] = useState<VectorTheme>(initialTheme);
-  const clientRef = useRef<RickyRealtimeClient | null>(null);
+  const clientRef = useRef<VectorRealtimeClient | null>(null);
   const artifactKeyRef = useRef("");
   const lastActivityRef = useRef(Date.now());
 
@@ -75,7 +76,7 @@ export default function App() {
     });
   }
 
-  function announceArtifact(nextArtifact: RickyArtifact) {
+  function announceArtifact(nextArtifact: VectorArtifact) {
     const key = `${nextArtifact.kind}:${nextArtifact.title}`;
     if (key !== artifactKeyRef.current) {
       artifactKeyRef.current = key;
@@ -102,8 +103,8 @@ export default function App() {
   const statusTone = connectionState === "error" || mood === "error" ? "blocked" : mood === "working" || mood === "thinking" ? "active" : "idle";
 
   useEffect(() => {
-    if (!window.ricky?.onRemoteCodexEvent) return;
-    return window.ricky.onRemoteCodexEvent((event: RickyRemoteCodexEvent) => {
+    if (!vectorPlatform?.remoteCodex) return;
+    return vectorPlatform.remoteCodex.subscribeToLifecycle((event: RemoteCodexLifecycleEvent) => {
       announceArtifact(event.artifact);
       setArtifact(event.artifact);
       setArtifactVisible(true);
@@ -116,7 +117,7 @@ export default function App() {
     });
   }, []);
 
-  function reportElectronBridgeMissing() {
+  function reportPlatformMissing() {
     setConnectionState("error");
     setMood("error");
     setStatus(missingElectronBridgeMessage);
@@ -124,11 +125,11 @@ export default function App() {
   }
 
   async function connect() {
-    if (!window.ricky) {
-      reportElectronBridgeMissing();
+    if (!vectorPlatform) {
+      reportPlatformMissing();
       return;
     }
-    const client = new RickyRealtimeClient({
+    const client = new VectorRealtimeClient(vectorPlatform, {
       onConnectionState: (state) => {
         setConnectionState(state);
         if (state === "connected") {
@@ -179,13 +180,13 @@ export default function App() {
     playDisconnectSound();
   }
 
-  async function switchMode(nextMode: RickyMode) {
-    if (!window.ricky) {
-      reportElectronBridgeMissing();
+  async function switchMode(nextMode: VectorMode) {
+    if (!vectorPlatform) {
+      reportPlatformMissing();
       return;
     }
     setMode(nextMode);
-    const result = await window.ricky.executeTool({ name: "set_mode", arguments: { mode: nextMode } });
+    const result = await vectorPlatform.executeTool({ name: "set_mode", arguments: { mode: nextMode } });
     if (result.artifact) setArtifact(result.artifact);
     if (nextMode === "computer") {
       setArtifactVisible(false);
@@ -397,7 +398,7 @@ export default function App() {
               {transcript.map((entry) => (
                 <article className={`entry entry-${entry.role}`} key={entry.id}>
                   <div>
-                    <strong>{entry.role === "ricky" ? "Vector" : entry.role}</strong>
+                    <strong>{entry.role === "assistant" ? "Vector" : entry.role}</strong>
                     <time>{entry.at}</time>
                   </div>
                   <p>{entry.text}</p>

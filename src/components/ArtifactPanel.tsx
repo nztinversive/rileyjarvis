@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Zap } from "lucide-react";
 import mermaid from "mermaid";
-import type { RickyArtifact } from "../vite-env";
+import type { VectorArtifact } from "../platform";
 
 type ArtifactPanelProps = {
-  artifact: RickyArtifact | null;
+  artifact: VectorArtifact | null;
   visible: boolean;
   fullscreen: boolean;
   onToggleVisible: () => void;
@@ -168,7 +168,7 @@ function EmptyArtifact() {
   );
 }
 
-function renderArtifact(artifact: RickyArtifact, mermaidState: MermaidState) {
+function renderArtifact(artifact: VectorArtifact, mermaidState: MermaidState) {
   if (artifact.kind === "table") {
     return <JsonTable content={artifact.content} />;
   }

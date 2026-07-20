@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
-import type { MouthShape, RickyMood } from "../lib/realtime";
+import type { MouthShape, VectorMood } from "../lib/realtime";
 
 type VectorOrbProps = {
-  mood: RickyMood;
+  mood: VectorMood;
   mouthShape: MouthShape;
 };
 

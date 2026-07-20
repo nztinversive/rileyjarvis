@@ -1096,7 +1096,7 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.entry-ricky strong {
+.entry-assistant strong {
   color: var(--orange);
 }
 
@@ -1118,7 +1118,7 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-.entry-ricky {
+.entry-assistant {
   background: var(--orange-soft);
   border-color: rgba(255, 95, 31, 0.24);
 }
