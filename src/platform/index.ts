@@ -4,6 +4,8 @@ import { resolveVectorPlatform } from "./resolver";
 
 export type {
   AppLifecycleCapability,
+  MobileDataCapability,
+  NativeShareCapability,
   RealtimeCredential,
   RemoteCodexCapability,
   RemoteCodexLifecycleEvent,

@@ -19,6 +19,7 @@
     "ios:open": "npm run ios:sync && cap open ios",
     "ios:run": "npm run ios:sync && cap run ios",
     "ios:verify": "npm run ios:sync && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build",
+    "native-data:test": "swift test --package-path ios/App/VectorMobileDataCore",
     "test": "node --test",
     "typecheck": "tsc --noEmit"
   },

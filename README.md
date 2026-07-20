@@ -133,7 +133,7 @@ Computer-control tools are blocked until the app is in computer-use mode. Comput
 
 The renderer accesses runtime capabilities through a typed platform boundary. Electron's preload bridge remains implemented by the desktop adapter, while native Capacitor iOS resolves to a Keychain- and backend-backed mobile adapter before desktop/browser fallback. See [docs/platform-boundary.md](docs/platform-boundary.md).
 
-The iOS app targets iOS 15+ with Capacitor 8 and Xcode 26+. Native iOS uses a mobile-first Talk, Artifacts, and Activity tab model; Computer mode and Remote Codex remain desktop-only. Phase 5 verifies Realtime/audio lifecycle readiness through automated tests and signing-disabled iPhone Simulator builds, installs, and launches. Physical microphone input, audible output, accessories, interruptions, signing, and device behavior remain unverified and are deferred to Phase 8 or a dedicated pre-release hardware gate. See [docs/ios.md](docs/ios.md).
+The iOS app targets iOS 15+ with Capacitor 8 and Xcode 26+. Native iOS uses a mobile-first Talk, Artifacts, and Activity tab model; Computer mode and Remote Codex remain desktop-only. Phase 6 adds Simulator-verified private local notes, structured records, an explicit saved-artifact library, and the native iOS share sheet while preserving the Phase 5 Voice preview disclosure. Physical microphone/audio hardware proof remains deferred to Phase 8. See [docs/ios.md](docs/ios.md).
 
 ## Remote Codex over Tailscale
 
@@ -216,7 +216,11 @@ See [`server/README.md`](server/README.md) for the endpoint contract, local plac
 
 ## Runtime Data
 
-During development, the app creates a local `data/` directory for notes, records, generated images, and thumbnail-board state. In packaged builds, runtime data is stored under Electron's user-data directory. `.env.local` can be placed in the development repo, beside a portable packaged executable, or in the packaged app's user-data directory.
+Electron creates a local `data/` directory during development for notes, records, generated images, and thumbnail-board state. Packaged Electron builds use the Electron user-data directory; that behavior is unchanged.
+
+Native iOS never uses the repo, web bundle, Preferences, or localStorage for durable app data. Notes, structured records, and explicitly saved supported artifacts are kept in the app's Application Support container with complete file protection, serialized atomic writes, versioned validation, and bounded item/file sizes. Activity and conversation transcripts remain session-scoped unless the user explicitly saves an artifact or note. iOS exports only the selected safe text/JSON/Markdown or a credential-free HTTPS image link through the system share sheet. Delete actions require confirmation; Realtime-triggered deletion also presents a native item-specific destructive alert, so a model-supplied flag cannot delete data by itself. If the store is corrupt, Vector preserves a protected recovery copy, shows an actionable error, and permits a clean local reset on retry instead of silently destroying the original.
+
+Phase 7 will own accounts and cloud sync. Phase 6 data remains local to the installed app and is removed when the user deletes items or uninstalls the app.
 
 Do not commit:
 

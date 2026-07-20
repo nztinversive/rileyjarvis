@@ -1,8 +1,20 @@
 # Vector iOS development
 
-Phase 5 delivers Simulator-verified Realtime and audio-lifecycle readiness for the Capacitor 8 iOS 15+ app: explicit microphone permission boundaries, native audio-session routing code, bounded WebRTC setup, deterministic teardown, interruption and lifecycle handling, typed prompts, and a temporary DEBUG-only Keychain provisioning mechanism.
+Phase 6 builds on the Simulator-verified Phase 5 voice foundation with private native mobile data: durable notes, structured records, an intentional saved-artifact library, bounded Realtime data tools, and safe native sharing. The Phase 5 Voice preview disclosure remains unchanged because physical audio hardware proof is still deferred.
 
-## Phase 5 verification status
+## Phase 6 local data and retention
+
+The iOS store uses schema version 1 and lives in Vector's Application Support container, outside the web bundle. A serialized native boundary performs strict decoding, deterministic newest-first ordering, stable generated UUIDs, UTC timestamps, bounded count/field/file validation, atomic replacement writes, and complete file protection so the store is unavailable while the device is locked. It is excluded from device backups in this phase. There is no durable-data fallback to localStorage, Capacitor Preferences, `Info.plist`, URL parameters, or the repo.
+
+Current limits are 200 notes, 200 records, 100 saved artifacts, a 2 MB store file, 12 tags per note, 16 KB structured data per record, and 64,000 shared-contract characters per saved artifact. Supported saved kinds are text, Markdown, code, table, notes, Mermaid, and credential-free HTTPS images. Loading/progress artifacts and local/data/file image sources are not saved. Realtime credentials, bootstrap tokens, API keys, SDP, microphone data, runtime logs, native paths, and full transcripts are never part of this contract. Activity remains session-scoped by default.
+
+Artifacts now have Current and Saved views alongside browsable Notes and Records inside the existing Artifacts tab. Save is always explicit. Delete requires a confirmation interaction, and every Realtime-triggered deletion must also pass an item-specific native destructive alert before storage changes. Text, notes, and records share as selected sanitized content; secure images share as HTTPS links. The iOS share sheet treats cancellation as a normal result and creates no persistent export file.
+
+If decoding fails, Vector preserves the damaged file as a protected recovery copy and reports a sanitized actionable error. Retrying starts a fresh in-memory library; the next successful write atomically creates a valid store without deleting the recovery copy. A newer unsupported schema is preserved and requires an app update rather than reset.
+
+Phase 7 owns customer accounts and cloud synchronization. Until then, the library is local to this app installation and can be removed item by item or by uninstalling Vector.
+
+## Simulator verification status
 
 As of July 20, 2026, Phase 5 acceptance is intentionally limited to automated coverage and iPhone Simulator build/install/launch readiness. The current development machine provides Xcode 26.6 (build 17F113) with iOS 26.4 and 26.5 Simulator destinations.
 
@@ -148,7 +160,7 @@ The complete signing-disabled Simulator compile is:
 npm run ios:verify
 ```
 
-For representative UI coverage, install and launch the resulting Debug app on a current full-size iPhone Simulator and a compact iPhone Simulator. Confirm that Talk, Artifacts, and Activity render, Computer and Remote Codex remain absent, the Talk screen is labeled **Voice preview**, and startup without backend provisioning fails closed.
+For representative UI coverage, install and launch the resulting Debug app on a current full-size iPhone Simulator and a compact iPhone Simulator. Confirm that Talk, Artifacts, and Activity render, Computer and Remote Codex remain absent, and the Talk screen is labeled **Voice preview**. In Artifacts, create/read/update/delete a note and record, search a record collection, save and remove a supported current artifact, terminate and relaunch to verify restoration, browse Saved, present and cancel the native share sheet, and confirm a rejected unsafe image or size limit fails clearly. Startup without backend provisioning must still fail closed.
 
 Without a deployed backend and Keychain bootstrap credential, tapping Start must fail closed with a clear setup message. Simulator UI, compile success, installation, and launch prove only Simulator readiness—not microphone input, audible output, accessories, real interruptions, signing, or physical-iPhone behavior.
 
@@ -212,6 +224,7 @@ Run:
 npm ci
 npm ls --all
 npm test
+npm run native-data:test
 npm run typecheck
 npm run build
 npm run server:test
@@ -225,4 +238,4 @@ Also scan tracked changes, generated assets, bundle output, and captured logs fo
 
 ## Deferred work
 
-Phase 5 does not add hardware voice proof, background audio, always-on recording, production accounts, analytics, push notifications, subscriptions, quotas, cloud sync, TestFlight, or App Store submission. Phase 7 customer authentication remains explicitly deferred. Physical-iPhone voice proof is assigned to Phase 8 or a dedicated pre-release follow-up; the remaining Phase 6 and Phase 8 scope must still be defined separately rather than inferred here.
+Phase 6 does not add hardware voice proof, background audio, always-on recording, production accounts, analytics, push notifications, subscriptions, quotas, cloud sync, TestFlight, or App Store submission. Phase 7 customer authentication and synchronization remain explicitly deferred. Physical-iPhone voice proof remains assigned to Phase 8 or a dedicated pre-release follow-up.

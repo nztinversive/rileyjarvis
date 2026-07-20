@@ -222,9 +222,14 @@ test("OpenAI payload is server-owned and allowlisted", async () => {
   assert.deepEqual(body.session.output_modalities, ["audio"]);
   assert.deepEqual(body.session.reasoning, { effort: "low" });
   assert.deepEqual(body.session.tools, IOS_TOOL_SPECS);
+  assert.match(body.session.instructions, /confirmed field to true only after the user clearly confirms/);
   assert.deepEqual(
     body.session.tools.map((tool) => tool.name),
-    ["set_mode", "artifact_show", "show_menu"],
+    [
+      "set_mode", "note_add", "note_list", "note_update", "note_delete",
+      "records_create", "records_search", "records_update", "records_delete",
+      "artifact_save", "artifact_library_list", "artifact_unsave", "artifact_show", "show_menu",
+    ],
   );
   assert.equal(body.session.tools.every((tool) => tool.type === "function"), true);
   assert.deepEqual(body.session.audio, {

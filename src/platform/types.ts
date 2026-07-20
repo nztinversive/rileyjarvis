@@ -88,6 +88,25 @@ export type VoiceSessionCapability = {
   subscribe: (callback: (event: VoiceSessionEvent) => void) => () => void;
 };
 
+export type MobileDataCapability = {
+  list: () => Promise<import("../mobile/data").VectorMobileStore>;
+  subscribe: (callback: (store: import("../mobile/data").VectorMobileStore) => void) => () => void;
+  confirmDeletion: (input: { kind: "note" | "record" | "saved artifact"; summary: string }) => Promise<boolean>;
+  createNote: (input: { text: string; tags?: string[] }) => Promise<import("../mobile/data").VectorMobileStore>;
+  updateNote: (input: { id: string; text?: string; tags?: string[] }) => Promise<import("../mobile/data").VectorMobileStore>;
+  deleteNote: (id: string) => Promise<import("../mobile/data").VectorMobileStore>;
+  createRecord: (input: { collection: string; title: string; data?: Record<string, unknown> }) => Promise<import("../mobile/data").VectorMobileStore>;
+  searchRecords: (input: { collection: string; query?: string; limit?: number }) => Promise<import("../mobile/data").VectorMobileRecord[]>;
+  updateRecord: (input: { id: string; title?: string; data?: Record<string, unknown> }) => Promise<import("../mobile/data").VectorMobileStore>;
+  deleteRecord: (id: string) => Promise<import("../mobile/data").VectorMobileStore>;
+  saveArtifact: (artifact: VectorArtifact, id?: string) => Promise<import("../mobile/data").VectorMobileStore>;
+  deleteArtifact: (id: string) => Promise<import("../mobile/data").VectorMobileStore>;
+};
+
+export type NativeShareCapability = {
+  share: (payload: { title: string; text?: string; url?: string; filename?: string }) => Promise<{ completed: boolean }>;
+};
+
 export type VectorPresentation = "desktop" | "native-mobile";
 
 export type VectorPlatform = {
@@ -99,4 +118,6 @@ export type VectorPlatform = {
   openExternalUrl?: (url: string) => Promise<void>;
   remoteCodex?: RemoteCodexCapability;
   voiceSession?: VoiceSessionCapability;
+  mobileData?: MobileDataCapability;
+  nativeShare?: NativeShareCapability;
 };

@@ -35,7 +35,7 @@ The included rate limiter is process-local and appropriate for a single service 
 
 ## Trust boundary
 
-The endpoint accepts no model, instructions, voice, audio, tools, or TTL fields. `server/session-config.cjs` owns the allowlisted GA payload sent to `POST /v1/realtime/client_secrets`, including the existing `gpt-realtime-2.1-mini` model, low reasoning, semantic VAD behavior, interrupt support, `cedar` voice, and the three iOS-safe tool schemas in `shared/ios-tool-specs.json`. The iOS adapter consumes the same allowlist. Desktop-only tools remain in Electron and are not exposed by this service.
+The endpoint accepts no model, instructions, voice, audio, tools, or TTL fields. `server/session-config.cjs` owns the allowlisted GA payload sent to `POST /v1/realtime/client_secrets`, including the existing `gpt-realtime-2.1-mini` model, low reasoning, semantic VAD behavior, interrupt support, `cedar` voice, explicit confirmation policy for destructive local-data tools, and the canonical iOS-safe schemas in `shared/ios-tool-specs.json`. The iOS adapter consumes the same allowlist. Desktop-only tools remain in Electron and are not exposed by this service.
 
 OpenAI permits a client using an ephemeral credential to establish the WebRTC call. Phase 3's iOS adapter calls this service through `VectorPlatform.createRealtimeCredential`, then uses the returned short-lived value with `/v1/realtime/calls`. The standard key never enters the app bundle or the service response.
 
