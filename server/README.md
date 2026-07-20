@@ -35,9 +35,9 @@ The included rate limiter is process-local and appropriate for a single service 
 
 ## Trust boundary
 
-The endpoint accepts no model, instructions, voice, audio, tools, or TTL fields. `server/session-config.cjs` owns the allowlisted GA payload sent to `POST /v1/realtime/client_secrets`, including the existing `gpt-realtime-2.1-mini` model, low reasoning, semantic VAD behavior, interrupt support, and `cedar` voice. Desktop-only tools remain in Electron and are not exposed by this service.
+The endpoint accepts no model, instructions, voice, audio, tools, or TTL fields. `server/session-config.cjs` owns the allowlisted GA payload sent to `POST /v1/realtime/client_secrets`, including the existing `gpt-realtime-2.1-mini` model, low reasoning, semantic VAD behavior, interrupt support, `cedar` voice, and the three iOS-safe tool schemas in `shared/ios-tool-specs.json`. The iOS adapter consumes the same allowlist. Desktop-only tools remain in Electron and are not exposed by this service.
 
-OpenAI permits a client using an ephemeral credential to establish the WebRTC call. Phase 3's iOS adapter will call this service through `VectorPlatform.createRealtimeCredential`, then use the returned short-lived value with `/v1/realtime/calls`. The standard key never enters the app bundle or the service response.
+OpenAI permits a client using an ephemeral credential to establish the WebRTC call. Phase 3's iOS adapter calls this service through `VectorPlatform.createRealtimeCredential`, then uses the returned short-lived value with `/v1/realtime/calls`. The standard key never enters the app bundle or the service response.
 
 The official client-secret contract allows session configuration to be updated by the connecting client. This service is the source of the issued configuration and accepts no client overrides, but an ephemeral credential is not a cryptographic policy lock. Phase 3 must keep the adapter configuration-free and test that it sends no session update. If future threat modeling requires enforcement against a modified client, move WebRTC call establishment or server controls behind the backend rather than trusting the app bundle.
 

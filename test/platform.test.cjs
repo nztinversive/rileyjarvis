@@ -4,6 +4,7 @@ const Module = require("node:module");
 const path = require("node:path");
 const test = require("node:test");
 const ts = require("typescript");
+const iosToolSpecAllowlist = require("../shared/ios-tool-specs.json");
 
 const { createElectronVectorPlatform } = loadTypeScriptModule("../src/platform/electron.ts");
 const { createIOSVectorPlatform } = loadTypeScriptModule("../src/platform/ios.ts");
@@ -202,6 +203,7 @@ test("the iOS adapter exposes only mobile tools and safely rejects desktop tools
     specs.map((tool) => tool.name),
     ["set_mode", "artifact_show", "show_menu"],
   );
+  assert.deepEqual(specs, iosToolSpecAllowlist);
   assert.equal(specs.some((tool) => tool.name.startsWith("remote_codex")), false);
   assert.deepEqual(await platform.executeTool({ name: "remote_codex_start", arguments: {} }), {
     ok: false,

@@ -14,7 +14,7 @@ Electron continues to provide the existing tool schemas and Remote Codex lifecyc
 
 ## iOS adapter
 
-`src/platform/capacitor.ts` detects a native Capacitor iOS runtime before the Electron/browser fallback and composes the testable adapter in `src/platform/ios.ts`. The iOS adapter omits Remote Codex and exposes only display mode, iOS-safe artifacts, and the mobile capability menu. Unknown and desktop-only tools return safe unsupported results; their absence does not block Realtime startup.
+`src/platform/capacitor.ts` detects a native Capacitor iOS runtime before the Electron/browser fallback and composes the testable adapter in `src/platform/ios.ts`. The iOS adapter omits Remote Codex and exposes only display mode, iOS-safe artifacts, and the mobile capability menu. The adapter and session service both consume the canonical allowlist in `shared/ios-tool-specs.json`, so the service registers exactly those schemas when it issues the Realtime credential. Unknown and desktop-only tools return safe unsupported results; their absence does not block Realtime startup.
 
 `createRealtimeCredential()` reads the temporary bootstrap bearer credential from the native `VectorSecureStorage` Keychain plugin and sends an authenticated empty JSON request to `POST /api/realtime/session`. The backend origin comes from the non-secret `VITE_VECTOR_BACKEND_URL` build setting and must be HTTPS. The adapter validates and returns only `{ value, expiresAt }`, bounds the request, sanitizes errors, and does not log either credential.
 

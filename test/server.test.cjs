@@ -7,7 +7,7 @@ const test = require("node:test");
 const { createVectorRealtimeServer } = require("../server/app.cjs");
 const { loadConfig } = require("../server/config.cjs");
 const { createSafetyIdentifier } = require("../server/safety-id.cjs");
-const { VECTOR_REALTIME_MODEL } = require("../server/session-config.cjs");
+const { IOS_TOOL_SPECS, VECTOR_REALTIME_MODEL } = require("../server/session-config.cjs");
 
 const STANDARD_API_KEY = "sk-test-standard-api-key-that-must-never-leak";
 const AUTH_TOKEN = "authenticated-test-token-at-least-32-characters";
@@ -221,7 +221,12 @@ test("OpenAI payload is server-owned and allowlisted", async () => {
   assert.equal(body.session.model, VECTOR_REALTIME_MODEL);
   assert.deepEqual(body.session.output_modalities, ["audio"]);
   assert.deepEqual(body.session.reasoning, { effort: "low" });
-  assert.deepEqual(body.session.tools, []);
+  assert.deepEqual(body.session.tools, IOS_TOOL_SPECS);
+  assert.deepEqual(
+    body.session.tools.map((tool) => tool.name),
+    ["set_mode", "artifact_show", "show_menu"],
+  );
+  assert.equal(body.session.tools.every((tool) => tool.type === "function"), true);
   assert.deepEqual(body.session.audio, {
     input: {
       turn_detection: {

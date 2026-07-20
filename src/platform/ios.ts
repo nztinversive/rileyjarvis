@@ -7,6 +7,7 @@ import type {
   VectorToolResult,
   VectorToolSpec,
 } from "./types";
+import iosToolSpecAllowlist from "../../shared/ios-tool-specs.json";
 
 export type IOSSecureStorageBridge = {
   get: () => Promise<{ value?: unknown }>;
@@ -37,51 +38,7 @@ const supportedArtifactKinds = new Set<VectorArtifact["kind"]>([
   "progress",
 ]);
 
-export const iosToolSpecs: VectorToolSpec[] = [
-  {
-    type: "function",
-    name: "set_mode",
-    description: "Keep Vector in its supported iOS display mode.",
-    parameters: {
-      type: "object",
-      properties: {
-        mode: { type: "string", enum: ["display"] },
-      },
-      required: ["mode"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "artifact_show",
-    description: "Show iOS-safe text, Markdown, code, table, note, Mermaid, image, or progress content in the artifact panel.",
-    parameters: {
-      type: "object",
-      properties: {
-        title: { type: "string" },
-        kind: {
-          type: "string",
-          enum: ["text", "markdown", "code", "table", "notes", "mermaid", "image", "imageLoading", "progress"],
-        },
-        content: { type: "string" },
-        language: { type: "string" },
-        fullscreen: { type: "boolean" },
-      },
-      required: ["title", "kind", "content"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "show_menu",
-    description: "Show the capabilities currently available in the Vector iOS shell.",
-    parameters: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-];
+export const iosToolSpecs = iosToolSpecAllowlist as VectorToolSpec[];
 
 class SafeIOSPlatformError extends Error {}
 

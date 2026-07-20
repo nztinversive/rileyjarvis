@@ -1,5 +1,7 @@
 "use strict";
 
+const IOS_TOOL_SPECS = require("../shared/ios-tool-specs.json");
+
 const VECTOR_REALTIME_MODEL = "gpt-realtime-2.1-mini";
 
 const VECTOR_REALTIME_INSTRUCTIONS = `# Role and Objective
@@ -24,7 +26,7 @@ function buildRealtimeClientSecretRequest() {
       output_modalities: ["audio"],
       reasoning: { effort: "low" },
       tool_choice: "auto",
-      tools: [],
+      tools: structuredClone(IOS_TOOL_SPECS),
       audio: {
         input: {
           turn_detection: {
@@ -46,6 +48,7 @@ function buildRealtimeClientSecretRequest() {
 }
 
 module.exports = {
+  IOS_TOOL_SPECS,
   VECTOR_REALTIME_INSTRUCTIONS,
   VECTOR_REALTIME_MODEL,
   buildRealtimeClientSecretRequest,
