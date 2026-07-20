@@ -18,12 +18,15 @@ import type { MobileDataCapability, NativeShareCapability, VectorArtifact } from
 import { ArtifactPanel } from "./ArtifactPanel";
 
 type LibrarySection = "current" | "saved" | "notes" | "records";
+export type MobileNoteEditDraft = { id: string; text: string };
 
 type MobileLibraryProps = {
   artifact: VectorArtifact | null;
+  editDraft: MobileNoteEditDraft | null;
   mobileData: MobileDataCapability;
   nativeShare?: NativeShareCapability;
   onOpenExternalUrl?: (url: string) => Promise<void>;
+  setEditDraft: (draft: MobileNoteEditDraft | null) => void;
 };
 
 const sections: Array<{ id: LibrarySection; label: string; icon: typeof FileText }> = [
@@ -33,7 +36,7 @@ const sections: Array<{ id: LibrarySection; label: string; icon: typeof FileText
   { id: "records", label: "Records", icon: Database },
 ];
 
-export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExternalUrl }: MobileLibraryProps) {
+export function MobileLibrary({ artifact, editDraft, mobileData, nativeShare, onOpenExternalUrl, setEditDraft }: MobileLibraryProps) {
   const [section, setSection] = useState<LibrarySection>("current");
   const [state, dispatch] = useReducer(mobileLibraryReducer, {
     status: "loading",
@@ -136,9 +139,11 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
       ) : null}
       {libraryReady && section === "notes" ? (
         <NotesLibrary
+          editDraft={editDraft}
           items={state.store.notes}
           nativeShare={nativeShare}
           pending={mutating}
+          setEditDraft={setEditDraft}
           onCreate={(text, tags) => mutate(() => mobileData.createNote({ text, tags }).then((result) => result.store), "Note saved locally.")}
           onUpdate={(id, text) => mutate(() => mobileData.updateNote({ id, text }), "Note updated.")}
           onDelete={(id) => mutate(() => mobileData.deleteNote(id), "Note deleted.")}
@@ -191,10 +196,9 @@ function SavedLibrary({ items, nativeShare, pending, onUpdate, onDelete, onOpenE
   );
 }
 
-function NotesLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelete }: { items: VectorMobileNote[]; nativeShare?: NativeShareCapability; pending: boolean; onCreate: (text: string, tags: string[]) => Promise<boolean>; onUpdate: (id: string, text: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
+function NotesLibrary({ editDraft, items, nativeShare, pending, setEditDraft, onCreate, onUpdate, onDelete }: { editDraft: MobileNoteEditDraft | null; items: VectorMobileNote[]; nativeShare?: NativeShareCapability; pending: boolean; setEditDraft: (draft: MobileNoteEditDraft | null) => void; onCreate: (text: string, tags: string[]) => Promise<boolean>; onUpdate: (id: string, text: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
   const [tags, setTags] = useState("");
-  const [editDraft, setEditDraft] = useState<{ id: string; text: string } | null>(null);
   return (
     <section aria-labelledby="mobile-notes-heading">
       <div className="mobile-library-heading"><div><span>Private and local</span><h2 id="mobile-notes-heading">Notes</h2></div><b>{items.length}/{mobileDataLimits.maxNotes}</b></div>
