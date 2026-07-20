@@ -81,17 +81,20 @@ final class VectorMobileDataCoreTests: XCTestCase {
         let store = VectorMobileDataStore(directoryURL: directory)
         _ = try store.addNote(text: "Keep protected data", tags: [], id: "note-0001")
         let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
-        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: storeURL.path)
-        defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
+        enum SimulatedReadError: Error { case unavailable }
+        var failNextRead = true
+        let retryableStore = VectorMobileDataStore(directoryURL: directory) { url in
+            if failNextRead {
+                failNextRead = false
+                throw SimulatedReadError.unavailable
+            }
+            return try Data(contentsOf: url)
         }
 
-        let retryableStore = VectorMobileDataStore(directoryURL: directory)
         XCTAssertThrowsError(try retryableStore.snapshot())
         XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path))
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
 
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
         XCTAssertEqual(try retryableStore.snapshot().document.notes.first?.text, "Keep protected data")
     }
 

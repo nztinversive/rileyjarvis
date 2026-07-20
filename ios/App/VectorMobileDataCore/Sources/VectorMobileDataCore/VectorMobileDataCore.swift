@@ -145,12 +145,18 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     private let encoder: JSONEncoder
     private let contractEncoder: JSONEncoder
     private let decoder = JSONDecoder()
+    private let readData: (URL) throws -> Data
     private var loaded: VectorMobileDataDocument?
     private var recoveredCorruptStore: String?
 
-    public init(directoryURL: URL) {
+    public convenience init(directoryURL: URL) {
+        self.init(directoryURL: directoryURL, readData: { try Data(contentsOf: $0) })
+    }
+
+    init(directoryURL: URL, readData: @escaping (URL) throws -> Data) {
         self.directoryURL = directoryURL
         self.storeURL = directoryURL.appendingPathComponent("vector-mobile-data.json", isDirectory: false)
+        self.readData = readData
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         self.encoder = encoder
@@ -381,7 +387,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         // File-protection and other transient I/O failures must remain retryable.
         // Only data that was read successfully but cannot be decoded or validated
         // is eligible for corruption recovery.
-        let data = try Data(contentsOf: storeURL)
+        let data = try readData(storeURL)
         do {
             let envelope = try decoder.decode(VectorMobileDataVersionEnvelope.self, from: data)
             guard envelope.schemaVersion <= Self.schemaVersion else {
