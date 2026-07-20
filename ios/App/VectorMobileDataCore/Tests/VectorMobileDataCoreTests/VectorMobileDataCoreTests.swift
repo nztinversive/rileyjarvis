@@ -104,6 +104,18 @@ final class VectorMobileDataCoreTests: XCTestCase {
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
     }
 
+    func testOversizedCurrentSchemaStillUsesRecoveryPath() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
+        let source = "{\"padding\":\"\(String(repeating: "x", count: VectorMobileDataStore.maxFileBytes))\",\"schemaVersion\":1}"
+        try Data(source.utf8).write(to: storeURL)
+        let store = VectorMobileDataStore(directoryURL: directory)
+        let snapshot = try store.snapshot()
+        XCTAssertNotNil(snapshot.recoveredCorruptStore)
+        XCTAssertTrue(snapshot.document.notes.isEmpty)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
+    }
+
     func testReservedRecordFieldsAndUnsafeImagesFailClosed() throws {
         let store = VectorMobileDataStore(directoryURL: directory)
         XCTAssertThrowsError(try store.createRecord(collection: "tasks", title: "Unsafe", fields: ["__proto__": .object(["secret": .bool(true)])]))

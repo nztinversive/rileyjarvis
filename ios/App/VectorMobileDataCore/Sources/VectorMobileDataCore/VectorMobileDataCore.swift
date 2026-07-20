@@ -130,7 +130,6 @@ public extension VectorJSONValue {
 public final class VectorMobileDataStore: @unchecked Sendable {
     public static let schemaVersion = 1
     public static let maxFileBytes = 2_000_000
-    private static let maxSchemaProbeBytes = 16_000_000
     public static let maxNotes = 200
     public static let maxRecords = 200
     public static let maxArtifacts = 100
@@ -331,17 +330,17 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             return document
         }
         let values = try storeURL.resourceValues(forKeys: [.fileSizeKey])
-        guard (values.fileSize ?? 0) <= Self.maxSchemaProbeBytes else {
-            throw VectorMobileDataError.unsupportedSchema
+        if (values.fileSize ?? 0) > Self.maxFileBytes {
+            if let probedSchemaVersion = try probeSchemaVersionLocked(), probedSchemaVersion > Self.schemaVersion {
+                throw VectorMobileDataError.unsupportedSchema
+            }
+            return try recoverCorruptStoreLocked()
         }
         do {
-            let data = try Data(contentsOf: storeURL, options: [.mappedIfSafe])
+            let data = try Data(contentsOf: storeURL)
             let envelope = try decoder.decode(VectorMobileDataVersionEnvelope.self, from: data)
             guard envelope.schemaVersion <= Self.schemaVersion else {
                 throw VectorMobileDataError.unsupportedSchema
-            }
-            guard data.count <= Self.maxFileBytes else {
-                return try recoverCorruptStoreLocked()
             }
             let decoded = try decoder.decode(VectorMobileDataDocument.self, from: data)
             let document = try migrate(decoded)
@@ -353,6 +352,79 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         } catch {
             return try recoverCorruptStoreLocked()
         }
+    }
+
+    private func probeSchemaVersionLocked() throws -> Int? {
+        let handle = try FileHandle(forReadingFrom: storeURL)
+        defer { try? handle.close() }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var expectingTopLevelKey = false
+        var capturingTopLevelKey = false
+        var keyBytes: [UInt8] = []
+        var currentKeyIsSchemaVersion = false
+        var waitingForSchemaValue = false
+        var numberBytes: [UInt8] = []
+
+        while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+            for byte in chunk {
+                if inString {
+                    if escaped { escaped = false; continue }
+                    if byte == 0x5C { escaped = true; continue }
+                    if byte == 0x22 {
+                        inString = false
+                        if capturingTopLevelKey {
+                            currentKeyIsSchemaVersion = keyBytes == Array("schemaVersion".utf8)
+                            capturingTopLevelKey = false
+                            expectingTopLevelKey = false
+                        }
+                        continue
+                    }
+                    if capturingTopLevelKey, keyBytes.count <= 32 { keyBytes.append(byte) }
+                    continue
+                }
+
+                if waitingForSchemaValue {
+                    if byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D { continue }
+                    if (0x30...0x39).contains(byte) {
+                        numberBytes.append(byte)
+                        continue
+                    }
+                    return numberBytes.isEmpty ? nil : Int(String(decoding: numberBytes, as: UTF8.self))
+                }
+
+                switch byte {
+                case 0x7B, 0x5B:
+                    depth += 1
+                    if depth == 1 { expectingTopLevelKey = true }
+                case 0x7D, 0x5D:
+                    if depth == 1, currentKeyIsSchemaVersion { return nil }
+                    depth = max(0, depth - 1)
+                case 0x2C:
+                    if depth == 1 {
+                        expectingTopLevelKey = true
+                        currentKeyIsSchemaVersion = false
+                    }
+                case 0x3A:
+                    if depth == 1, currentKeyIsSchemaVersion {
+                        waitingForSchemaValue = true
+                    }
+                case 0x22:
+                    inString = true
+                    if depth == 1, expectingTopLevelKey {
+                        capturingTopLevelKey = true
+                        keyBytes.removeAll(keepingCapacity: true)
+                    }
+                default:
+                    continue
+                }
+            }
+        }
+        if waitingForSchemaValue, !numberBytes.isEmpty {
+            return Int(String(decoding: numberBytes, as: UTF8.self))
+        }
+        return nil
     }
 
     private func recoverCorruptStoreLocked() throws -> VectorMobileDataDocument {
