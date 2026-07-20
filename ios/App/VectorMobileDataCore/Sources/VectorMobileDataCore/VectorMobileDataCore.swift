@@ -203,7 +203,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
                 guard tags.count <= 12 else { throw VectorMobileDataError.invalid("A note can have at most 12 tags.") }
                 document.notes[index].tags = try tags.map { try bounded($0, label: "Tag", maxBytes: 192) }
             }
-            document.notes[index].updatedAt = iso(now)
+            document.notes[index].updatedAt = nextTimestamp(after: document.notes[index].updatedAt, now: now)
             let note = document.notes[index]
             try persistLocked(document)
             return note
@@ -679,6 +679,15 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+
+    private func nextTimestamp(after current: String, now: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let currentDate = formatter.date(from: current), now <= currentDate else {
+            return iso(now)
+        }
+        return iso(currentDate.addingTimeInterval(0.001))
     }
 }
 

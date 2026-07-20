@@ -56,7 +56,8 @@ final class VectorMobileDataCoreTests: XCTestCase {
     func testNoteUpdateRejectsAStaleExpectedTimestamp() throws {
         let store = VectorMobileDataStore(directoryURL: directory)
         let original = try store.addNote(text: "Original", tags: [], now: Date(timeIntervalSince1970: 1), id: "note-0001")
-        _ = try store.updateNote(id: original.id, text: "Newer value", tags: nil, now: Date(timeIntervalSince1970: 2))
+        let newer = try store.updateNote(id: original.id, text: "Newer value", tags: nil, now: Date(timeIntervalSince1970: 1))
+        XCTAssertNotEqual(newer.updatedAt, original.updatedAt)
 
         XCTAssertThrowsError(
             try store.updateNote(
@@ -64,7 +65,7 @@ final class VectorMobileDataCoreTests: XCTestCase {
                 text: "Stale draft",
                 tags: nil,
                 expectedUpdatedAt: original.updatedAt,
-                now: Date(timeIntervalSince1970: 3)
+                now: Date(timeIntervalSince1970: 1)
             )
         ) {
             XCTAssertEqual($0 as? VectorMobileDataError, .itemChanged)
