@@ -130,6 +130,7 @@ public extension VectorJSONValue {
 public final class VectorMobileDataStore: @unchecked Sendable {
     public static let schemaVersion = 1
     public static let maxFileBytes = 2_000_000
+    private static let maxSchemaProbeBytes = 16_000_000
     public static let maxNotes = 200
     public static let maxRecords = 200
     public static let maxArtifacts = 100
@@ -330,14 +331,17 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             return document
         }
         let values = try storeURL.resourceValues(forKeys: [.fileSizeKey])
-        guard (values.fileSize ?? 0) <= Self.maxFileBytes else {
-            return try recoverCorruptStoreLocked()
+        guard (values.fileSize ?? 0) <= Self.maxSchemaProbeBytes else {
+            throw VectorMobileDataError.unsupportedSchema
         }
         do {
-            let data = try Data(contentsOf: storeURL)
+            let data = try Data(contentsOf: storeURL, options: [.mappedIfSafe])
             let envelope = try decoder.decode(VectorMobileDataVersionEnvelope.self, from: data)
             guard envelope.schemaVersion <= Self.schemaVersion else {
                 throw VectorMobileDataError.unsupportedSchema
+            }
+            guard data.count <= Self.maxFileBytes else {
+                return try recoverCorruptStoreLocked()
             }
             let decoded = try decoder.decode(VectorMobileDataDocument.self, from: data)
             let document = try migrate(decoded)

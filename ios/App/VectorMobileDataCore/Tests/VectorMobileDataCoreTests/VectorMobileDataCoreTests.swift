@@ -92,8 +92,9 @@ final class VectorMobileDataCoreTests: XCTestCase {
     func testUnsupportedSchemaIsPreservedWithoutReset() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
-        let source = "{\"schemaVersion\":2,\"futureShape\":{\"items\":[]}}"
+        let source = "{\"schemaVersion\":2,\"futureShape\":\"\(String(repeating: "x", count: VectorMobileDataStore.maxFileBytes + 1))\"}"
         try Data(source.utf8).write(to: storeURL)
+        XCTAssertGreaterThan(try Data(contentsOf: storeURL).count, VectorMobileDataStore.maxFileBytes)
         let store = VectorMobileDataStore(directoryURL: directory)
         XCTAssertThrowsError(try store.snapshot()) { XCTAssertEqual($0 as? VectorMobileDataError, .unsupportedSchema) }
         XCTAssertThrowsError(try store.addNote(text: "Must not overwrite", tags: [])) {
