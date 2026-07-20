@@ -92,11 +92,15 @@ final class VectorMobileDataCoreTests: XCTestCase {
     func testUnsupportedSchemaIsPreservedWithoutReset() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
-        let source = "{\"schemaVersion\":2,\"notes\":[],\"records\":[],\"savedArtifacts\":[]}"
+        let source = "{\"schemaVersion\":2,\"futureShape\":{\"items\":[]}}"
         try Data(source.utf8).write(to: storeURL)
         let store = VectorMobileDataStore(directoryURL: directory)
         XCTAssertThrowsError(try store.snapshot()) { XCTAssertEqual($0 as? VectorMobileDataError, .unsupportedSchema) }
+        XCTAssertThrowsError(try store.addNote(text: "Must not overwrite", tags: [])) {
+            XCTAssertEqual($0 as? VectorMobileDataError, .unsupportedSchema)
+        }
         XCTAssertEqual(try String(contentsOf: storeURL, encoding: .utf8), source)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
     }
 
     func testReservedRecordFieldsAndUnsafeImagesFailClosed() throws {

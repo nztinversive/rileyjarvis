@@ -79,6 +79,10 @@ public struct VectorMobileDataSnapshot: Sendable {
     public let recoveredCorruptStore: String?
 }
 
+private struct VectorMobileDataVersionEnvelope: Decodable {
+    let schemaVersion: Int
+}
+
 public enum VectorMobileDataError: LocalizedError, Equatable {
     case invalid(String)
     case notFound
@@ -330,7 +334,12 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             return try recoverCorruptStoreLocked()
         }
         do {
-            let decoded = try decoder.decode(VectorMobileDataDocument.self, from: Data(contentsOf: storeURL))
+            let data = try Data(contentsOf: storeURL)
+            let envelope = try decoder.decode(VectorMobileDataVersionEnvelope.self, from: data)
+            guard envelope.schemaVersion <= Self.schemaVersion else {
+                throw VectorMobileDataError.unsupportedSchema
+            }
+            let decoded = try decoder.decode(VectorMobileDataDocument.self, from: data)
             let document = try migrate(decoded)
             try validate(document)
             loaded = document
