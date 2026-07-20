@@ -54,7 +54,12 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
                     message: summary,
                     preferredStyle: .alert
                 )
-                let finish: (Bool) -> Void = { confirmed in
+                let finish: (Bool) -> Void = { [weak alert] confirmed in
+                    guard let alert else {
+                        self.confirmationInProgress = false
+                        call.reject("Deletion confirmation is unavailable.", "CONFIRMATION_UNAVAILABLE")
+                        return
+                    }
                     alert.dismiss(animated: !UIAccessibility.isReduceMotionEnabled) {
                         self.confirmationInProgress = false
                         call.resolve(["confirmed": confirmed])
