@@ -53,6 +53,25 @@ final class VectorMobileDataCoreTests: XCTestCase {
         XCTAssertEqual(try store.snapshot().document.notes.first?.text, "Changed after prompt")
     }
 
+    func testNoteUpdateRejectsAStaleExpectedTimestamp() throws {
+        let store = VectorMobileDataStore(directoryURL: directory)
+        let original = try store.addNote(text: "Original", tags: [], now: Date(timeIntervalSince1970: 1), id: "note-0001")
+        _ = try store.updateNote(id: original.id, text: "Newer value", tags: nil, now: Date(timeIntervalSince1970: 2))
+
+        XCTAssertThrowsError(
+            try store.updateNote(
+                id: original.id,
+                text: "Stale draft",
+                tags: nil,
+                expectedUpdatedAt: original.updatedAt,
+                now: Date(timeIntervalSince1970: 3)
+            )
+        ) {
+            XCTAssertEqual($0 as? VectorMobileDataError, .itemChanged)
+        }
+        XCTAssertEqual(try store.snapshot().document.notes.first?.text, "Newer value")
+    }
+
     func testCorruptionIsPreservedBeforeRecoveryWrites() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let storeURL = directory.appendingPathComponent("vector-mobile-data.json")

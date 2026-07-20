@@ -171,7 +171,10 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   assert.match(project, /VectorSharePlugin\.swift in Sources/);
   const library = read("src/components/MobileLibrary.tsx");
   const mobileShell = read("src/components/MobileAppShell.tsx");
-  assert.match(library, /setEditDraft\(\{ id: item\.id, text: item\.text \}\)/);
+  assert.match(library, /setEditDraft\(\{ id: item\.id, text: item\.text, expectedUpdatedAt: item\.updatedAt \}\)/);
+  assert.match(library, /mobileData\.updateNote\(\{ id, text, expectedUpdatedAt \}\)/);
+  assert.match(library, /editTarget\?\.updatedAt !== editDraft\.expectedUpdatedAt/);
+  assert.match(library, /This note changed while you were editing/);
   assert.match(library, /if \(saved\) setEditDraft\(null\)/);
   assert.match(library, /disabled=\{pending \|\| Boolean\(editDraft\)\}/);
   assert.doesNotMatch(library, /const \[editDraft, setEditDraft\] = useState/);

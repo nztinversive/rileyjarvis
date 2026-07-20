@@ -110,10 +110,11 @@ export function validateNoteCreateInput(input: { text: string; tags?: string[] }
   };
 }
 
-export function validateNoteUpdateInput(input: { id: string; text?: string; tags?: string[] }): {
+export function validateNoteUpdateInput(input: { id: string; text?: string; tags?: string[]; expectedUpdatedAt?: string }): {
   id: string;
   text?: string;
   tags?: string[];
+  expectedUpdatedAt?: string;
 } {
   if (input.text === undefined && input.tags === undefined) {
     throw new Error("A note update must include text or tags.");
@@ -124,6 +125,7 @@ export function validateNoteUpdateInput(input: { id: string; text?: string; tags
       ? { text: boundedContent(input.text, "Note text", mobileDataLimits.maxTextLength) }
       : {}),
     ...(input.tags !== undefined ? { tags: parseTags(input.tags) } : {}),
+    ...(input.expectedUpdatedAt !== undefined ? { expectedUpdatedAt: requireTimestamp(input.expectedUpdatedAt) } : {}),
   };
 }
 

@@ -96,7 +96,7 @@ export type MobileDataCapability = {
     store: import("../mobile/data").VectorMobileStore;
     itemId: string;
   }>;
-  updateNote: (input: { id: string; text?: string; tags?: string[] }) => Promise<import("../mobile/data").VectorMobileStore>;
+  updateNote: (input: { id: string; text?: string; tags?: string[]; expectedUpdatedAt?: string }) => Promise<import("../mobile/data").VectorMobileStore>;
   deleteNote: (id: string) => Promise<import("../mobile/data").VectorMobileStore>;
   createRecord: (input: { collection: string; title: string; data?: Record<string, unknown> }) => Promise<{
     store: import("../mobile/data").VectorMobileStore;

@@ -147,8 +147,11 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.match(library, /disabled=\{!canSave \|\| pending/);
   assert.match(library, /mode !== "new" && !draftTouched && collections\.length/);
   assert.match(library, /setDraftTouched\(true\)/);
-  assert.match(library, /setEditDraft\(\{ id: item\.id, text: item\.text \}\)/);
-  assert.match(library, /onUpdate\(editDraft\.id, editDraft\.text\)\.then\(\(saved\) => \{\s*if \(saved\) setEditDraft\(null\)/);
+  assert.match(library, /setEditDraft\(\{ id: item\.id, text: item\.text, expectedUpdatedAt: item\.updatedAt \}\)/);
+  assert.match(library, /onUpdate\(editDraft\.id, editDraft\.text, editDraft\.expectedUpdatedAt\)\.then\(\(saved\) => \{\s*if \(saved\) setEditDraft\(null\)/);
+  assert.match(library, /editTarget\?\.updatedAt !== editDraft\.expectedUpdatedAt/);
+  assert.match(plugin, /expectedUpdatedAt: call\.getString\("expectedUpdatedAt"\)/);
+  assert.match(core, /document\.notes\[index\]\.updatedAt != expectedUpdatedAt[\s\S]*?VectorMobileDataError\.itemChanged/);
   assert.match(library, /disabled=\{pending \|\| Boolean\(editDraft\)\}/);
   assert.doesNotMatch(library, /const \[editDraft, setEditDraft\] = useState/);
   assert.match(mobileShell, /useState<MobileNoteEditDraft \| null>\(null\)/);

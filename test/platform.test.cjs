@@ -304,6 +304,7 @@ test("the iOS adapter selects typed mobile data and share capabilities with boun
   let store = { version: 1, notes: [], records: [], artifacts: [] };
   let deletes = 0;
   let updates = 0;
+  const noteUpdateInputs = [];
   let nativeConfirmation = false;
   const confirmationRequests = [];
   const now = "2026-07-20T12:00:00Z";
@@ -325,7 +326,7 @@ test("the iOS adapter selects typed mobile data and share capabilities with boun
       );
       return { store: structuredClone(store), itemId: "note-0001" };
     },
-    async updateNote() { updates += 1; return structuredClone(store); },
+    async updateNote(input) { noteUpdateInputs.push(input); updates += 1; return structuredClone(store); },
     async deleteNote({ id }) { deletes += 1; store.notes = store.notes.filter((item) => item.id !== id); return structuredClone(store); },
     async createRecord(input) {
       store.records.push(
@@ -363,9 +364,11 @@ test("the iOS adapter selects typed mobile data and share capabilities with boun
   const unsubscribeMobileData = platform.mobileData.subscribe((nextStore) => observedStores.push(nextStore));
   assert.equal((await platform.executeTool({ name: "note_add", arguments: { text: "Remember", tags: ["work"] } })).note.id, "note-0001");
   assert.equal(observedStores.at(-1).notes[0].text, "Remember");
+  await platform.mobileData.updateNote({ id: "note-0001", text: "Edited", expectedUpdatedAt: now });
+  assert.deepEqual(noteUpdateInputs, [{ id: "note-0001", text: "Edited", expectedUpdatedAt: now }]);
   unsubscribeMobileData();
   assert.equal((await platform.executeTool({ name: "records_create", arguments: { collection: "tasks", title: "Ship", data: { done: false } } })).record.id, "record-0001");
-  assert.equal(observedStores.length, 1);
+  assert.equal(observedStores.length, 2);
   assert.equal((await platform.executeTool({ name: "records_search", arguments: { collection: "tasks", query: "ship" } })).records.length, 1);
   assert.equal((await platform.executeTool({ name: "artifact_save", arguments: { title: "Plan", kind: "markdown", content: "# Plan" } })).savedArtifact.id, "artifact-0001");
   assert.equal((await platform.executeTool({ name: "note_delete", arguments: { id: "note-0001", confirmed: false } })).requiresConfirmation, true);
@@ -390,7 +393,7 @@ test("the iOS adapter selects typed mobile data and share capabilities with boun
     (await platform.executeTool({ name: "records_update", arguments: { id: "record-0001" } })).error,
     /must include a title or structured data/,
   );
-  assert.equal(updates, 0);
+  assert.equal(updates, 1);
 
   const noteCount = store.notes.length;
   await assert.rejects(

@@ -18,7 +18,7 @@ import type { MobileDataCapability, NativeShareCapability, VectorArtifact } from
 import { ArtifactPanel } from "./ArtifactPanel";
 
 type LibrarySection = "current" | "saved" | "notes" | "records";
-export type MobileNoteEditDraft = { id: string; text: string };
+export type MobileNoteEditDraft = { id: string; text: string; expectedUpdatedAt: string };
 
 type MobileLibraryProps = {
   artifact: VectorArtifact | null;
@@ -145,7 +145,7 @@ export function MobileLibrary({ artifact, editDraft, mobileData, nativeShare, on
           pending={mutating}
           setEditDraft={setEditDraft}
           onCreate={(text, tags) => mutate(() => mobileData.createNote({ text, tags }).then((result) => result.store), "Note saved locally.")}
-          onUpdate={(id, text) => mutate(() => mobileData.updateNote({ id, text }), "Note updated.")}
+          onUpdate={(id, text, expectedUpdatedAt) => mutate(() => mobileData.updateNote({ id, text, expectedUpdatedAt }), "Note updated.")}
           onDelete={(id) => mutate(() => mobileData.deleteNote(id), "Note deleted.")}
         />
       ) : null}
@@ -196,9 +196,11 @@ function SavedLibrary({ items, nativeShare, pending, onUpdate, onDelete, onOpenE
   );
 }
 
-function NotesLibrary({ editDraft, items, nativeShare, pending, setEditDraft, onCreate, onUpdate, onDelete }: { editDraft: MobileNoteEditDraft | null; items: VectorMobileNote[]; nativeShare?: NativeShareCapability; pending: boolean; setEditDraft: (draft: MobileNoteEditDraft | null) => void; onCreate: (text: string, tags: string[]) => Promise<boolean>; onUpdate: (id: string, text: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
+function NotesLibrary({ editDraft, items, nativeShare, pending, setEditDraft, onCreate, onUpdate, onDelete }: { editDraft: MobileNoteEditDraft | null; items: VectorMobileNote[]; nativeShare?: NativeShareCapability; pending: boolean; setEditDraft: (draft: MobileNoteEditDraft | null) => void; onCreate: (text: string, tags: string[]) => Promise<boolean>; onUpdate: (id: string, text: string, expectedUpdatedAt: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
   const [tags, setTags] = useState("");
+  const editTarget = editDraft ? items.find((item) => item.id === editDraft.id) : null;
+  const editConflict = Boolean(editDraft && editTarget?.updatedAt !== editDraft.expectedUpdatedAt);
   return (
     <section aria-labelledby="mobile-notes-heading">
       <div className="mobile-library-heading"><div><span>Private and local</span><h2 id="mobile-notes-heading">Notes</h2></div><b>{items.length}/{mobileDataLimits.maxNotes}</b></div>
@@ -213,7 +215,8 @@ function NotesLibrary({ editDraft, items, nativeShare, pending, setEditDraft, on
           aria-label="Edit saved note"
           onSubmit={(event) => {
             event.preventDefault();
-            void onUpdate(editDraft.id, editDraft.text).then((saved) => {
+            if (editConflict) return;
+            void onUpdate(editDraft.id, editDraft.text, editDraft.expectedUpdatedAt).then((saved) => {
               if (saved) setEditDraft(null);
             });
           }}
@@ -226,13 +229,14 @@ function NotesLibrary({ editDraft, items, nativeShare, pending, setEditDraft, on
             value={editDraft.text}
             onChange={(event) => setEditDraft({ ...editDraft, text: event.target.value })}
           />
+          {editConflict ? <p role="alert">This note changed while you were editing. Cancel and reopen it to review the latest version.</p> : null}
           <div className="mobile-library-heading-actions">
             <button type="button" disabled={pending} onClick={() => setEditDraft(null)}>Cancel</button>
-            <button type="submit" disabled={pending || !editDraft.text.trim()}>{pending ? "Saving…" : "Save edit"}</button>
+            <button type="submit" disabled={pending || editConflict || !editDraft.text.trim()}>{pending ? "Saving…" : "Save edit"}</button>
           </div>
         </form>
       ) : null}
-      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending || Boolean(editDraft)} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => setEditDraft({ id: item.id, text: item.text })} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
+      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending || Boolean(editDraft)} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => setEditDraft({ id: item.id, text: item.text, expectedUpdatedAt: item.updatedAt })} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
     </section>
   );
 }

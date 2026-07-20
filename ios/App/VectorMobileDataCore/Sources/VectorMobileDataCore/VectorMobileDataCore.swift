@@ -191,10 +191,13 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     }
 
     @discardableResult
-    public func updateNote(id: String, text: String?, tags: [String]?, now: Date = Date()) throws -> VectorMobileNote {
+    public func updateNote(id: String, text: String?, tags: [String]?, expectedUpdatedAt: String? = nil, now: Date = Date()) throws -> VectorMobileNote {
         try queue.sync {
             var document = try loadLocked()
             guard let index = document.notes.firstIndex(where: { $0.id == id }) else { throw VectorMobileDataError.notFound }
+            if let expectedUpdatedAt, document.notes[index].updatedAt != expectedUpdatedAt {
+                throw VectorMobileDataError.itemChanged
+            }
             if let text { document.notes[index].text = try boundedContent(text, label: "Note", maxBytes: Self.maxTextBytes) }
             if let tags {
                 guard tags.count <= 12 else { throw VectorMobileDataError.invalid("A note can have at most 12 tags.") }
