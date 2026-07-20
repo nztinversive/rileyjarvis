@@ -19,9 +19,12 @@ export function getCapacitorIOSVectorPlatform(): VectorPlatform | null {
 
   const appLifecycle: AppLifecycleCapability = {
     subscribe(callback) {
-      const handle = App.addListener("appStateChange", ({ isActive }) => callback(isActive));
+      const handles = [
+        App.addListener("pause", () => callback(false)),
+        App.addListener("resume", () => callback(true)),
+      ];
       return () => {
-        void handle.then((listener) => listener.remove());
+        void Promise.all(handles).then((listeners) => Promise.all(listeners.map((listener) => listener.remove())));
       };
     },
   };

@@ -30,6 +30,9 @@ test("the native Keychain plugin is narrow, device-only, and registered with Cap
   assert.match(adapter, /secureStorage\.get/);
   assert.match(bridge, /secureStorage\.set/);
   assert.match(bridge, /secureStorage\.delete/);
+  assert.match(bridge, /App\.addListener\("pause"/);
+  assert.match(bridge, /App\.addListener\("resume"/);
+  assert.doesNotMatch(bridge, /appStateChange/);
 });
 
 test("the iOS project declares microphone purpose, secure defaults, and no background audio", () => {

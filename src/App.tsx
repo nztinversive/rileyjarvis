@@ -196,6 +196,11 @@ export default function App() {
       return;
     }
     const result = await vectorPlatform.executeTool({ name: "set_mode", arguments: { mode: nextMode } });
+    if (result.artifact) {
+      setArtifact(result.artifact);
+      setArtifactVisible(true);
+      if (result.artifact.fullscreen) setArtifactFullscreen(true);
+    }
     if (!result.ok) {
       const message = result.error || "That mode is not available on this platform.";
       setStatus(message);
@@ -203,7 +208,6 @@ export default function App() {
       return;
     }
     setMode(nextMode);
-    if (result.artifact) setArtifact(result.artifact);
     if (nextMode === "computer") {
       setArtifactVisible(false);
       setArtifactFullscreen(false);

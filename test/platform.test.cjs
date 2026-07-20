@@ -8,7 +8,8 @@ const ts = require("typescript");
 const { createElectronVectorPlatform } = loadTypeScriptModule("../src/platform/electron.ts");
 const { createIOSVectorPlatform } = loadTypeScriptModule("../src/platform/ios.ts");
 const { resolveVectorPlatform } = loadTypeScriptModule("../src/platform/resolver.ts");
-const { prepareRealtimeSession, realtimeConnectedStatus, VectorRealtimeClient } = loadTypeScriptModule("../src/lib/realtime.ts");
+const { createEntryId, prepareRealtimeSession, realtimeConnectedStatus, VectorRealtimeClient } =
+  loadTypeScriptModule("../src/lib/realtime.ts");
 
 test("the Electron adapter maps the legacy preload bridge to VectorPlatform", async () => {
   const calls = [];
@@ -266,6 +267,27 @@ test("Realtime preserves the Remote Codex ready message when the desktop tool is
 
   assert.equal(session.remoteCodexAvailable, true);
   assert.equal(realtimeConnectedStatus(session.remoteCodexAvailable), "Vector is live. Remote Codex is ready.");
+});
+
+test("transcript IDs fall back to Web Crypto available on early iOS 15", () => {
+  const id = createEntryId({
+    getRandomValues(bytes) {
+      bytes.set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+      return bytes;
+    },
+  });
+
+  assert.equal(id, "00010203-0405-4607-8809-0a0b0c0d0e0f");
+});
+
+test("mode failures retain platform-specific artifacts", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
+  const artifactHandling = source.indexOf("if (result.artifact)");
+  const failureHandling = source.indexOf("if (!result.ok)", artifactHandling);
+
+  assert.notEqual(artifactHandling, -1);
+  assert.ok(failureHandling > artifactHandling);
+  assert.match(source.slice(artifactHandling, failureHandling), /setArtifactVisible\(true\)/);
 });
 
 test("disconnecting an in-flight session prevents native setup from continuing", async () => {
