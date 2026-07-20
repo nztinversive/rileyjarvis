@@ -133,11 +133,13 @@ test("Electron injects the skill and tool schemas into Realtime sessions", () =>
   assert.match(mainSource, /remote-codex:event/);
 });
 
-test("the renderer refuses to connect without the Remote Codex start tool", () => {
+test("the renderer treats Remote Codex as an optional Realtime capability", () => {
   const realtimeSource = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "realtime.ts"), "utf8");
 
   assert.match(realtimeSource, /tool\.name === "remote_codex_start"/);
-  assert.match(realtimeSource, /Remote Codex is not registered in Vector's local tool bridge/);
+  assert.doesNotMatch(realtimeSource, /Remote Codex is not registered in Vector's local tool bridge/);
+  assert.match(realtimeSource, /remoteCodexAvailable: toolSpecs\.some/);
+  assert.match(realtimeSource, /remoteCodexAvailable \? "Vector is live\. Remote Codex is ready\." : "Vector is live\."/);
   assert.match(realtimeSource, /Vector is live\. Remote Codex is ready\./);
   assert.match(realtimeSource, /announceRemoteCodexEvent/);
   assert.match(realtimeSource, /automatic Remote Codex lifecycle notification/);

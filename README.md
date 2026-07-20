@@ -131,6 +131,8 @@ Vector runs locally. Depending on the features you use, macOS may ask for:
 
 Computer-control tools are blocked until the app is in computer-use mode. Computer-control tools are currently exposed only on macOS; on Windows, voice, artifacts, Project Cockpit, notes, records, web search, image generation, and thumbnails remain available.
 
+The renderer accesses runtime capabilities through a typed platform boundary. Electron's preload bridge is implemented by the desktop adapter; a future iOS adapter can provide mobile capabilities without adding Electron globals to shared app logic. See [docs/platform-boundary.md](docs/platform-boundary.md).
+
 ## Remote Codex over Tailscale
 
 Vector can delegate coding work to Codex CLI on a Linux machine reachable through Tailscale and SSH. Configure the SSH target and one or more remote repositories in `.env.local`:

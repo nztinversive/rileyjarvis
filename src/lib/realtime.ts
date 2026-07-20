@@ -1,7 +1,15 @@
-import type { RickyArtifact, RickyRemoteCodexEvent, RickyToolCall, RickyToolResult, RickyToolSpec } from "../vite-env";
+import type {
+  RealtimeCredential,
+  RemoteCodexLifecycleEvent,
+  VectorArtifact,
+  VectorPlatform,
+  VectorToolCall,
+  VectorToolResult,
+  VectorToolSpec,
+} from "../platform";
 
-export type RickyConnectionState = "idle" | "connecting" | "connected" | "error";
-export type RickyMood = "idle" | "listening" | "thinking" | "speaking" | "working" | "error";
+export type VectorConnectionState = "idle" | "connecting" | "connected" | "error";
+export type VectorMood = "idle" | "listening" | "thinking" | "speaking" | "working" | "error";
 
 export type MouthShape = {
   open: number;
@@ -12,17 +20,17 @@ export type MouthShape = {
 
 export type TranscriptEntry = {
   id: string;
-  role: "user" | "ricky" | "system" | "tool";
+  role: "user" | "assistant" | "system" | "tool";
   text: string;
   at: string;
 };
 
 export type RealtimeCallbacks = {
-  onConnectionState: (state: RickyConnectionState) => void;
-  onMood: (mood: RickyMood) => void;
+  onConnectionState: (state: VectorConnectionState) => void;
+  onMood: (mood: VectorMood) => void;
   onMouthShape: (shape: MouthShape) => void;
   onTranscript: (entry: TranscriptEntry) => void;
-  onArtifact: (artifact: RickyArtifact) => void;
+  onArtifact: (artifact: VectorArtifact) => void;
   onMode: (mode: "display" | "computer") => void;
   onStatus: (message: string) => void;
   onThumbnailReady: () => void;
@@ -54,15 +62,35 @@ type ResponseOutputItem = {
 };
 
 const realtimeUrl = "https://api.openai.com/v1/realtime/calls";
-const missingElectronBridgeMessage = "Open Vector in the Electron app window to use voice and local tools. The browser preview cannot access Electron's secure local bridge.";
 
-export class RickyRealtimeClient {
+export type PreparedRealtimeSession = {
+  credential: RealtimeCredential;
+  toolSpecs: VectorToolSpec[];
+  remoteCodexAvailable: boolean;
+};
+
+export async function prepareRealtimeSession(platform: VectorPlatform): Promise<PreparedRealtimeSession> {
+  const toolSpecs = await platform.listToolSpecs();
+  const credential = await platform.createRealtimeCredential();
+  return {
+    credential,
+    toolSpecs,
+    remoteCodexAvailable: toolSpecs.some((tool) => tool.name === "remote_codex_start"),
+  };
+}
+
+export function realtimeConnectedStatus(remoteCodexAvailable: boolean): string {
+  return remoteCodexAvailable ? "Vector is live. Remote Codex is ready." : "Vector is live.";
+}
+
+export class VectorRealtimeClient {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
   private micStream: MediaStream | null = null;
+  private platform: VectorPlatform;
   private callbacks: RealtimeCallbacks;
   private currentAssistantText = "";
-  private toolSpecs: RickyToolSpec[] = [];
+  private toolSpecs: VectorToolSpec[] = [];
   private remoteCodexAvailable = false;
   private toolRunning = false;
   private responseInProgress = false;
@@ -72,7 +100,8 @@ export class RickyRealtimeClient {
   private outputMeterFrame = 0;
   private smoothedMouthShape: MouthShape = silentMouthShape();
 
-  constructor(callbacks: RealtimeCallbacks) {
+  constructor(platform: VectorPlatform, callbacks: RealtimeCallbacks) {
+    this.platform = platform;
     this.callbacks = callbacks;
   }
 
@@ -83,15 +112,9 @@ export class RickyRealtimeClient {
     this.callbacks.onStatus("Minting a Realtime client secret.");
 
     try {
-      if (!window.ricky) {
-        throw new Error(missingElectronBridgeMessage);
-      }
-      this.toolSpecs = await window.ricky.getToolSpecs();
-      this.remoteCodexAvailable = this.toolSpecs.some((tool) => tool.name === "remote_codex_start");
-      if (!this.remoteCodexAvailable) {
-        throw new Error("Remote Codex is not registered in Vector's local tool bridge.");
-      }
-      const token = await window.ricky.createRealtimeToken();
+      const session = await prepareRealtimeSession(this.platform);
+      this.toolSpecs = session.toolSpecs;
+      this.remoteCodexAvailable = session.remoteCodexAvailable;
       const pc = new RTCPeerConnection();
       const audio = document.createElement("audio");
       audio.autoplay = true;
@@ -114,7 +137,7 @@ export class RickyRealtimeClient {
       dc.addEventListener("open", () => {
         this.callbacks.onConnectionState("connected");
         this.callbacks.onMood("idle");
-        this.callbacks.onStatus("Vector is live. Remote Codex is ready.");
+        this.callbacks.onStatus(realtimeConnectedStatus(this.remoteCodexAvailable));
         this.flushRemoteCodexAnnouncements();
       });
       dc.addEventListener("message", (event) => {
@@ -128,7 +151,7 @@ export class RickyRealtimeClient {
         method: "POST",
         body: offer.sdp,
         headers: {
-          Authorization: `Bearer ${token.value}`,
+          Authorization: `Bearer ${session.credential.value}`,
           "Content-Type": "application/sdp",
         },
       });
@@ -169,10 +192,6 @@ export class RickyRealtimeClient {
   }
 
   sendText(text: string): void {
-    if (!window.ricky) {
-      this.callbacks.onStatus(missingElectronBridgeMessage);
-      return;
-    }
     if (!this.dc || this.dc.readyState !== "open") {
       this.callbacks.onStatus("Connect Vector before sending a text prompt.");
       return;
@@ -189,7 +208,7 @@ export class RickyRealtimeClient {
     this.sendEvent({ type: "response.create" });
   }
 
-  announceRemoteCodexEvent(event: RickyRemoteCodexEvent): void {
+  announceRemoteCodexEvent(event: RemoteCodexLifecycleEvent): void {
     if (!event.announcement) return;
     this.pendingAnnouncements.push(event.announcement);
     this.flushRemoteCodexAnnouncements();
@@ -249,7 +268,7 @@ export class RickyRealtimeClient {
       this.responseInProgress = false;
       const output = event.response?.output || [];
       const spoken = this.currentAssistantText || output.map(collectOutputText).filter(Boolean).join("\n");
-      if (spoken) this.callbacks.onTranscript(newEntry("ricky", spoken));
+      if (spoken) this.callbacks.onTranscript(newEntry("assistant", spoken));
       this.currentAssistantText = "";
 
       const functionCalls = output.filter((item) => item.type === "function_call" && item.name && item.call_id);
@@ -263,10 +282,6 @@ export class RickyRealtimeClient {
   }
 
   private async executeFunctionCalls(items: ResponseOutputItem[]): Promise<void> {
-    if (!window.ricky) {
-      this.callbacks.onStatus(missingElectronBridgeMessage);
-      return;
-    }
     this.toolRunning = true;
     this.callbacks.onMood("working");
     let shouldCreateResponse = false;
@@ -296,18 +311,18 @@ export class RickyRealtimeClient {
         });
       }
       if (name === "thumbnail_generate" || name === "thumbnail_edit") {
-        const loadingResult = await window.ricky.executeTool({
+        const loadingResult = await this.platform.executeTool({
           name: "thumbnail_loading_prepare",
           arguments: {
             ...parsedArgs,
             mode: name === "thumbnail_edit" ? "edit" : "generate",
           },
-        } satisfies RickyToolCall);
+        } satisfies VectorToolCall);
         if (typeof loadingResult.runId === "string") parsedArgs.runId = loadingResult.runId;
         if (typeof loadingResult.targetId === "string") parsedArgs.targetId = loadingResult.targetId;
         if (loadingResult.artifact) this.callbacks.onArtifact(loadingResult.artifact);
       }
-      const result = await window.ricky.executeTool({ name, arguments: parsedArgs } satisfies RickyToolCall);
+      const result = await this.platform.executeTool({ name, arguments: parsedArgs } satisfies VectorToolCall);
       if (result.mode === "display" || result.mode === "computer") {
         this.callbacks.onMode(result.mode);
       }
@@ -322,7 +337,7 @@ export class RickyRealtimeClient {
     this.flushRemoteCodexAnnouncements();
   }
 
-  private async returnToolOutput(callId: string, result: RickyToolResult): Promise<void> {
+  private async returnToolOutput(callId: string, result: VectorToolResult): Promise<void> {
     this.sendEvent({
       type: "conversation.item.create",
       item: {
@@ -471,7 +486,7 @@ function parseToolArguments(raw: string): Record<string, unknown> {
   }
 }
 
-function sanitizeToolResult(result: RickyToolResult): RickyToolResult {
+function sanitizeToolResult(result: VectorToolResult): VectorToolResult {
   if (!result.artifact) return result;
 
   const { artifact, ...rest } = result;
