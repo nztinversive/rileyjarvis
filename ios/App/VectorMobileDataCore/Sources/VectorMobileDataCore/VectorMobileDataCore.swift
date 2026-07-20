@@ -302,7 +302,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             let cleanTitle = try bounded(title, label: "Title", maxBytes: 640)
             let cleanKind = try validateArtifactKind(kind)
             let cleanContent = try boundedContent(content, label: "Artifact", maxBytes: Self.maxArtifactBytes)
-            let cleanLanguage = try language.map { try bounded($0, label: "Language", maxBytes: 128) }
+            let cleanLanguage = try language.map(validateLanguage)
             var document = try loadLocked()
             let timestamp = iso(now)
             if let id {
@@ -562,6 +562,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             _ = try validateArtifactKind(artifact.kind)
             let content = try boundedContent(artifact.content, label: "Artifact", maxBytes: Self.maxArtifactBytes)
             if artifact.kind == "image" { try validateSecureImage(content) }
+            if let language = artifact.language { _ = try validateLanguage(language) }
             try validateID(artifact.id); try validateTimestamp(artifact.createdAt); try validateTimestamp(artifact.updatedAt)
         }
         let ids = document.notes.map(\.id) + document.records.map(\.id) + document.savedArtifacts.map(\.id)
@@ -573,8 +574,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         let data = try encoder.encode(fields)
         guard data.count <= Self.maxRecordBytes else { throw VectorMobileDataError.invalid("Fields are too large.") }
         for key in fields.keys {
-            _ = try bounded(key, label: "Field name", maxBytes: 320)
-            guard !["__proto__", "prototype", "constructor"].contains(key) else { throw VectorMobileDataError.invalid("Record data contains a reserved field.") }
+            try validateFieldName(key)
         }
         for value in fields.values { try validateJSON(value, depth: 0) }
     }
@@ -583,6 +583,18 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         let supported = ["text", "markdown", "code", "table", "notes", "mermaid", "image"]
         guard supported.contains(value) else { throw VectorMobileDataError.invalid("That artifact type cannot be saved on iOS.") }
         return value
+    }
+
+    private func validateLanguage(_ value: String) throws -> String {
+        let clean = try bounded(value, label: "Language", maxBytes: 128)
+        guard clean.count <= 32 else { throw VectorMobileDataError.invalid("Language is too large.") }
+        return clean
+    }
+
+    private func validateFieldName(_ key: String) throws {
+        _ = try bounded(key, label: "Field name", maxBytes: 320)
+        guard key.count <= 80 else { throw VectorMobileDataError.invalid("Record data contains an invalid field name.") }
+        guard !["__proto__", "prototype", "constructor"].contains(key) else { throw VectorMobileDataError.invalid("Record data contains a reserved field.") }
     }
 
     private func bounded(_ value: String, label: String, maxBytes: Int) throws -> String {
@@ -628,9 +640,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         case .number(let number): guard number.isFinite else { throw VectorMobileDataError.invalid("Record data contains an invalid number.") }
         case .array(let values): for item in values { try validateJSON(item, depth: depth + 1) }
         case .object(let values):
-            for key in values.keys {
-                guard !["__proto__", "prototype", "constructor"].contains(key) else { throw VectorMobileDataError.invalid("Record data contains a reserved field.") }
-            }
+            for key in values.keys { try validateFieldName(key) }
             for item in values.values { try validateJSON(item, depth: depth + 1) }
         default: break
         }

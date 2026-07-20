@@ -68,6 +68,25 @@ final class VectorMobileDataCoreTests: XCTestCase {
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(contentsOf: storeURL)))
     }
 
+    func testMalformedLanguageAndNestedRecordKeysUseRecoveryPath() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
+        let timestamp = "2026-07-20T12:00:00.000Z"
+        let malformedDocuments = [
+            "{\"schemaVersion\":1,\"notes\":[],\"records\":[],\"savedArtifacts\":[{\"id\":\"artifact-0001\",\"title\":\"Saved\",\"kind\":\"code\",\"content\":\"safe\",\"language\":\"\(String(repeating: "x", count: 33))\",\"createdAt\":\"\(timestamp)\",\"updatedAt\":\"\(timestamp)\"}]}",
+            "{\"schemaVersion\":1,\"notes\":[],\"records\":[{\"id\":\"record-0001\",\"collection\":\"tasks\",\"title\":\"Nested\",\"fields\":{\"outer\":{\"\(String(repeating: "k", count: 81))\":true}},\"createdAt\":\"\(timestamp)\",\"updatedAt\":\"\(timestamp)\"}],\"savedArtifacts\":[]}",
+        ]
+
+        for source in malformedDocuments {
+            try Data(source.utf8).write(to: storeURL, options: .atomic)
+            let snapshot = try VectorMobileDataStore(directoryURL: directory).snapshot()
+            XCTAssertNotNil(snapshot.recoveredCorruptStore)
+            XCTAssertTrue(snapshot.document.notes.isEmpty)
+            XCTAssertTrue(snapshot.document.records.isEmpty)
+            XCTAssertTrue(snapshot.document.savedArtifacts.isEmpty)
+        }
+    }
+
     func testBoundsRejectOversizedContent() throws {
         let store = VectorMobileDataStore(directoryURL: directory)
         XCTAssertThrowsError(try store.addNote(text: String(repeating: "a", count: VectorMobileDataStore.maxTextBytes + 1), tags: []))
