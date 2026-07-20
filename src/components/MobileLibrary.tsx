@@ -194,6 +194,7 @@ function SavedLibrary({ items, nativeShare, pending, onUpdate, onDelete, onOpenE
 function NotesLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelete }: { items: VectorMobileNote[]; nativeShare?: NativeShareCapability; pending: boolean; onCreate: (text: string, tags: string[]) => Promise<boolean>; onUpdate: (id: string, text: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
   const [tags, setTags] = useState("");
+  const [editDraft, setEditDraft] = useState<{ id: string; text: string } | null>(null);
   return (
     <section aria-labelledby="mobile-notes-heading">
       <div className="mobile-library-heading"><div><span>Private and local</span><h2 id="mobile-notes-heading">Notes</h2></div><b>{items.length}/{mobileDataLimits.maxNotes}</b></div>
@@ -202,7 +203,32 @@ function NotesLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelet
         <label htmlFor="mobile-note-tags">Tags, comma separated</label><input id="mobile-note-tags" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="idea, follow-up" />
         <button type="submit" disabled={pending || !text.trim()}><Plus size={18} />{pending ? "Saving…" : "Save note"}</button>
       </form>
-      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => promptContentEdit("Edit note", item.text, (value) => onUpdate(item.id, value))} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
+      {editDraft ? (
+        <form
+          className="mobile-library-form"
+          aria-label="Edit saved note"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onUpdate(editDraft.id, editDraft.text).then((saved) => {
+              if (saved) setEditDraft(null);
+            });
+          }}
+        >
+          <label htmlFor="mobile-note-edit">Edit note</label>
+          <textarea
+            id="mobile-note-edit"
+            required
+            maxLength={mobileDataLimits.maxTextLength}
+            value={editDraft.text}
+            onChange={(event) => setEditDraft({ ...editDraft, text: event.target.value })}
+          />
+          <div className="mobile-library-heading-actions">
+            <button type="button" disabled={pending} onClick={() => setEditDraft(null)}>Cancel</button>
+            <button type="submit" disabled={pending || !editDraft.text.trim()}>{pending ? "Saving…" : "Save edit"}</button>
+          </div>
+        </form>
+      ) : null}
+      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => setEditDraft({ id: item.id, text: item.text })} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
     </section>
   );
 }
@@ -261,5 +287,4 @@ function formatDate(value: string) { return new Intl.DateTimeFormat(undefined, {
 function safeMessage(error: unknown) { return error instanceof Error && error.message.length <= 180 ? error.message : "The local library operation failed safely."; }
 function confirmedDelete(message: string, operation: () => Promise<unknown>) { if (window.confirm(message)) void operation(); }
 function promptEdit(label: string, current: string, operation: (value: string) => Promise<unknown>) { const value = window.prompt(label, current); if (value?.trim() && value.trim() !== current) void operation(value.trim()); }
-function promptContentEdit(label: string, current: string, operation: (value: string) => Promise<unknown>) { const value = window.prompt(label, current); if (value !== null && value.trim() && value !== current) void operation(value); }
 function share(capability: NativeShareCapability, item: VectorSavedArtifact | VectorMobileNote | VectorMobileRecord) { void capability.share(savedItemSharePayload(item)).catch((error) => window.alert(safeMessage(error))); }

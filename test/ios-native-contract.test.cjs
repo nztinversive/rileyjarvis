@@ -135,6 +135,7 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   assert.match(core, /maxFileBytes/);
   assert.match(core, /corrupt-/);
   assert.match(core, /moveItem\(at: storeURL, to: backup\)/);
+  assert.match(core, /let data = try Data\(contentsOf: storeURL\)\s+do \{/);
   assert.match(core, /contractEncoder\.encode\(fields\)/);
   assert.doesNotMatch(core + plugin, /UserDefaults|Preferences|localStorage/);
   assert.match(plugin, /jsName = "VectorMobileData"/);
@@ -167,7 +168,10 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   assert.match(project, /VectorMobileDataCore\.swift in Sources/);
   assert.match(project, /VectorMobileDataPlugin\.swift in Sources/);
   assert.match(project, /VectorSharePlugin\.swift in Sources/);
-  assert.match(read("src/components/MobileLibrary.tsx"), /promptContentEdit[\s\S]*?void operation\(value\)/);
+  const library = read("src/components/MobileLibrary.tsx");
+  assert.match(library, /setEditDraft\(\{ id: item\.id, text: item\.text \}\)/);
+  assert.match(library, /if \(saved\) setEditDraft\(null\)/);
+  assert.doesNotMatch(library, /promptContentEdit/);
 });
 
 function read(relativePath) {

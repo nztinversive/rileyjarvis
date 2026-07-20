@@ -378,8 +378,11 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             }
             return try recoverCorruptStoreLocked()
         }
+        // File-protection and other transient I/O failures must remain retryable.
+        // Only data that was read successfully but cannot be decoded or validated
+        // is eligible for corruption recovery.
+        let data = try Data(contentsOf: storeURL)
         do {
-            let data = try Data(contentsOf: storeURL)
             let envelope = try decoder.decode(VectorMobileDataVersionEnvelope.self, from: data)
             guard envelope.schemaVersion <= Self.schemaVersion else {
                 throw VectorMobileDataError.unsupportedSchema

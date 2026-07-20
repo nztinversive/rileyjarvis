@@ -77,6 +77,24 @@ final class VectorMobileDataCoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: recoveryURL, encoding: .utf8), "{broken")
     }
 
+    func testTransientReadFailureDoesNotQuarantineValidStore() throws {
+        let store = VectorMobileDataStore(directoryURL: directory)
+        _ = try store.addNote(text: "Keep protected data", tags: [], id: "note-0001")
+        let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: storeURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
+        }
+
+        let retryableStore = VectorMobileDataStore(directoryURL: directory)
+        XCTAssertThrowsError(try retryableStore.snapshot())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
+        XCTAssertEqual(try retryableStore.snapshot().document.notes.first?.text, "Keep protected data")
+    }
+
     func testMalformedLanguageAndNestedRecordKeysUseRecoveryPath() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
