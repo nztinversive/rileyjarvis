@@ -54,13 +54,17 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
                     message: summary,
                     preferredStyle: .alert
                 )
+                let finish: (Bool) -> Void = { confirmed in
+                    alert.dismiss(animated: !UIAccessibility.isReduceMotionEnabled) {
+                        self.confirmationInProgress = false
+                        call.resolve(["confirmed": confirmed])
+                    }
+                }
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-                    self.confirmationInProgress = false
-                    call.resolve(["confirmed": false])
+                    finish(false)
                 })
                 alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
-                    self.confirmationInProgress = false
-                    call.resolve(["confirmed": true])
+                    finish(true)
                 })
                 presenter.present(alert, animated: true)
             }

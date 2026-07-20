@@ -144,6 +144,7 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   assert.match(plugin, /confirmationInProgress/);
   assert.match(plugin, /presentedViewController == nil/);
   assert.match(plugin, /CONFIRMATION_IN_PROGRESS/);
+  assert.match(plugin, /alert\.dismiss\([\s\S]*?confirmationInProgress = false[\s\S]*?call\.resolve/);
   assert.match(plugin, /CAPPluginMethod\(name: "createRecord"/);
   assert.match(plugin, /CAPPluginMethod\(name: "saveArtifact"/);
   assert.match(share, /UIActivityViewController/);
