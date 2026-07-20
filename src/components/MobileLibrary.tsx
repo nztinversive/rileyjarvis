@@ -41,11 +41,13 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
     error: null,
   });
   const [notice, setNotice] = useState("");
+  const [mutationError, setMutationError] = useState("");
   const [mutating, setMutating] = useState(false);
   const mutationInFlight = useRef(false);
   const libraryReady = state.status === "ready";
 
   async function refresh() {
+    setMutationError("");
     dispatch({ type: "loading" });
     try {
       dispatch({ type: "loaded", store: await mobileData.list() });
@@ -59,12 +61,13 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
     mutationInFlight.current = true;
     setMutating(true);
     setNotice("");
+    setMutationError("");
     try {
       dispatch({ type: "loaded", store: await operation() });
       setNotice(success);
       return true;
     } catch (error) {
-      dispatch({ type: "failed", error: safeMessage(error) });
+      setMutationError(safeMessage(error));
       return false;
     } finally {
       mutationInFlight.current = false;
@@ -99,6 +102,13 @@ export function MobileLibrary({ artifact, mobileData, nativeShare, onOpenExterna
         </div>
       ) : null}
       {state.status === "loading" ? <div className="mobile-library-state" role="status">Loading private local data…</div> : null}
+      {mutationError ? (
+        <div className="mobile-library-state" role="alert">
+          <strong>The local change was not saved</strong>
+          <p>{mutationError}</p>
+          <button type="button" onClick={() => setMutationError("")}>Dismiss</button>
+        </div>
+      ) : null}
       {notice ? <p className="mobile-library-notice" role="status">{notice}</p> : null}
 
       {section === "current" ? (

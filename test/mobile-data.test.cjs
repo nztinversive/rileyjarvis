@@ -98,7 +98,7 @@ test("only bounded supported artifacts and credential-free HTTPS image links can
   );
 });
 
-test("the library reducer refreshes mutations and preserves an actionable error state", () => {
+test("the library reducer preserves an actionable initial-load error state", () => {
   const initial = { status: "loading", store: emptyMobileStore, error: null };
   const loaded = mobileLibraryReducer(initial, { type: "loaded", store: { ...emptyMobileStore, notes: [note("note-0001", "2026-07-20T01:00:00.000Z")] } });
   assert.equal(loaded.status, "ready");
@@ -138,6 +138,9 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.match(bridge, /registerPluginInstance\(VectorSharePlugin\(\)\)/);
   assert.match(project, /VectorMobileDataCore\.swift in Sources/);
   assert.match(library, /if \(mutationInFlight\.current \|\| !libraryReady\) return false/);
+  assert.match(library, /catch \(error\) \{\s*setMutationError\(safeMessage\(error\)\);\s*return false;/);
+  assert.doesNotMatch(library, /catch \(error\) \{\s*dispatch\(\{ type: "failed", error: safeMessage\(error\) \}\);\s*return false;/);
+  assert.match(library, /The local change was not saved/);
   assert.match(library, /aria-busy=\{mutating\}/);
   assert.match(library, /\{section === "current"/);
   assert.match(library, /disabled=\{!canSave \|\| pending/);
