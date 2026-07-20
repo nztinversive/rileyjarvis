@@ -26,6 +26,7 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
         return VectorMobileDataStore(directoryURL: root)
     }()
     private let operationQueue = DispatchQueue(label: "com.rileyjarvis.vector.mobile-data-plugin", qos: .userInitiated)
+    private var confirmationInProgress = false
 
     @objc public func list(_ call: CAPPluginCall) {
         perform(call) { call.resolve(try self.storeDictionary()) }
@@ -39,19 +40,26 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
                 throw VectorMobileDataError.invalid("Deletion confirmation is too long.")
             }
             DispatchQueue.main.async { [weak self] in
-                guard let presenter = self?.bridge?.viewController else {
+                guard let self, let presenter = self.bridge?.viewController else {
                     call.reject("Deletion confirmation is unavailable.", "CONFIRMATION_UNAVAILABLE")
                     return
                 }
+                guard !self.confirmationInProgress, presenter.presentedViewController == nil else {
+                    call.reject("Another confirmation is already active.", "CONFIRMATION_IN_PROGRESS")
+                    return
+                }
+                self.confirmationInProgress = true
                 let alert = UIAlertController(
                     title: "Delete \(kind)?",
                     message: summary,
                     preferredStyle: .alert
                 )
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                    self.confirmationInProgress = false
                     call.resolve(["confirmed": false])
                 })
                 alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
+                    self.confirmationInProgress = false
                     call.resolve(["confirmed": true])
                 })
                 presenter.present(alert, animated: true)
