@@ -370,28 +370,37 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
             for byte in chunk {
                 if inString {
-                    if escaped { escaped = false; continue }
-                    if byte == 0x5C { escaped = true; continue }
+                    if escaped {
+                        if capturingTopLevelKey, keyBytes.count <= 128 { keyBytes.append(byte) }
+                        escaped = false
+                        continue
+                    }
+                    if byte == 0x5C {
+                        if capturingTopLevelKey, keyBytes.count <= 128 { keyBytes.append(byte) }
+                        escaped = true
+                        continue
+                    }
                     if byte == 0x22 {
                         inString = false
                         if capturingTopLevelKey {
-                            currentKeyIsSchemaVersion = keyBytes == Array("schemaVersion".utf8)
+                            let keyLiteral = Data([0x22] + keyBytes + [0x22])
+                            currentKeyIsSchemaVersion = (try? decoder.decode(String.self, from: keyLiteral)) == "schemaVersion"
                             capturingTopLevelKey = false
                             expectingTopLevelKey = false
                         }
                         continue
                     }
-                    if capturingTopLevelKey, keyBytes.count <= 32 { keyBytes.append(byte) }
+                    if capturingTopLevelKey, keyBytes.count <= 128 { keyBytes.append(byte) }
                     continue
                 }
 
                 if waitingForSchemaValue {
-                    if byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D { continue }
-                    if (0x30...0x39).contains(byte) {
+                    if numberBytes.isEmpty && (byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D) { continue }
+                    if (0x30...0x39).contains(byte) || byte == 0x2D || byte == 0x2B || byte == 0x2E || byte == 0x45 || byte == 0x65 {
                         numberBytes.append(byte)
                         continue
                     }
-                    return numberBytes.isEmpty ? nil : Int(String(decoding: numberBytes, as: UTF8.self))
+                    return numberBytes.isEmpty ? nil : try? decoder.decode(Int.self, from: Data(numberBytes))
                 }
 
                 switch byte {
@@ -422,7 +431,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             }
         }
         if waitingForSchemaValue, !numberBytes.isEmpty {
-            return Int(String(decoding: numberBytes, as: UTF8.self))
+            return try? decoder.decode(Int.self, from: Data(numberBytes))
         }
         return nil
     }
