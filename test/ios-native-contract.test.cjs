@@ -171,6 +171,7 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   const library = read("src/components/MobileLibrary.tsx");
   assert.match(library, /setEditDraft\(\{ id: item\.id, text: item\.text \}\)/);
   assert.match(library, /if \(saved\) setEditDraft\(null\)/);
+  assert.match(library, /disabled=\{pending \|\| Boolean\(editDraft\)\}/);
   assert.doesNotMatch(library, /promptContentEdit/);
 });
 

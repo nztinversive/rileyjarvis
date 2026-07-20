@@ -228,7 +228,7 @@ function NotesLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelet
           </div>
         </form>
       ) : null}
-      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => setEditDraft({ id: item.id, text: item.text })} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
+      {!items.length ? <EmptyState title="No saved notes" detail="Notes appear here without starting a voice session." /> : <div className="mobile-library-list">{items.map((item) => <LibraryCard key={item.id} title={item.text.slice(0, 80)} meta={`${item.tags.join(", ") || "No tags"} · ${formatDate(item.updatedAt)}`} body={item.text} disabled={pending || Boolean(editDraft)} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => setEditDraft({ id: item.id, text: item.text })} onDelete={() => confirmedDelete("Delete this local note? This cannot be undone.", () => onDelete(item.id))} />)}</div>}
     </section>
   );
 }
