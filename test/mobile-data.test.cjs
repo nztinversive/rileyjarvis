@@ -122,6 +122,8 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.doesNotMatch(`${core}\n${plugin}`, /UserDefaults|Preferences|localStorage/);
   assert.match(share, /UIActivityViewController/);
   assert.match(share, /completed/);
+  assert.match(share, /presentedViewController == nil/);
+  assert.match(share, /components\.query == nil/);
   assert.match(bridge, /registerPluginInstance\(VectorMobileDataPlugin\(\)\)/);
   assert.match(bridge, /registerPluginInstance\(VectorSharePlugin\(\)\)/);
   assert.match(project, /VectorMobileDataCore\.swift in Sources/);

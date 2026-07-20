@@ -8,6 +8,11 @@ public final class VectorSharePlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "share", returnType: CAPPluginReturnPromise)
     ]
+    private var shareInProgress = false
+
+    public override func load() {
+        try? FileManager.default.removeItem(at: exportRoot)
+    }
 
     @objc public func share(_ call: CAPPluginCall) {
         let title = sanitized(call.getString("title"), maximum: 160) ?? "Vector export"
@@ -16,8 +21,7 @@ public final class VectorSharePlugin: CAPPlugin, CAPBridgedPlugin {
         var temporaryDirectory: URL?
         if let text {
             do {
-                let directory = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("VectorExports", isDirectory: true)
+                let directory = exportRoot
                     .appendingPathComponent(UUID().uuidString, isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 let filename = safeFilename(call.getString("filename")) ?? "vector-export.txt"
@@ -30,7 +34,7 @@ public final class VectorSharePlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
         }
-        if let value = call.getString("url"), let components = URLComponents(string: value), components.scheme == "https", components.host != nil, components.user == nil, components.password == nil, let url = components.url {
+        if let value = call.getString("url"), let components = URLComponents(string: value), components.scheme == "https", components.host != nil, components.user == nil, components.password == nil, components.query == nil, components.fragment == nil, let url = components.url {
             items.append(url)
         } else if call.getString("url") != nil {
             if let temporaryDirectory { try? FileManager.default.removeItem(at: temporaryDirectory) }
@@ -49,11 +53,18 @@ public final class VectorSharePlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("The share sheet is unavailable.", "SHARE_UNAVAILABLE")
                 return
             }
+            guard !self.shareInProgress, presenter.presentedViewController == nil else {
+                if let temporaryDirectory { try? FileManager.default.removeItem(at: temporaryDirectory) }
+                call.reject("Another share sheet is already active.", "SHARE_IN_PROGRESS")
+                return
+            }
+            self.shareInProgress = true
             let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
             controller.title = title
             controller.excludedActivityTypes = [.assignToContact, .addToReadingList]
             controller.completionWithItemsHandler = { _, completed, _, _ in
                 if let temporaryDirectory { try? FileManager.default.removeItem(at: temporaryDirectory) }
+                self.shareInProgress = false
                 call.resolve(["completed": completed])
             }
             if let popover = controller.popoverPresentationController {
@@ -63,6 +74,10 @@ public final class VectorSharePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             presenter.present(controller, animated: !UIAccessibility.isReduceMotionEnabled)
         }
+    }
+
+    private var exportRoot: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("VectorExports", isDirectory: true)
     }
 
     private func sanitized(_ value: String?, maximum: Int) -> String? {

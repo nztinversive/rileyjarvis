@@ -145,6 +145,9 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   assert.match(plugin, /CAPPluginMethod\(name: "saveArtifact"/);
   assert.match(share, /UIActivityViewController/);
   assert.match(share, /VectorExports/);
+  assert.match(share, /override func load\(\)[\s\S]*?removeItem\(at: exportRoot\)/);
+  assert.match(share, /shareInProgress/);
+  assert.match(share, /SHARE_IN_PROGRESS/);
   assert.match(share, /\.completeFileProtection/);
   assert.match(share, /completionWithItemsHandler[\s\S]*?removeItem/);
   assert.match(controller, /registerPluginInstance\(VectorMobileDataPlugin\(\)\)/);
