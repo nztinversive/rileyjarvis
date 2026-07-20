@@ -68,6 +68,10 @@ final class VectorMobileDataCoreTests: XCTestCase {
             )
         ) {
             XCTAssertEqual($0 as? VectorMobileDataError, .itemChanged)
+            XCTAssertEqual(
+                ($0 as? VectorMobileDataError)?.errorDescription,
+                "The selected item changed. Review the latest version and try again."
+            )
         }
         XCTAssertEqual(try store.snapshot().document.notes.first?.text, "Newer value")
     }

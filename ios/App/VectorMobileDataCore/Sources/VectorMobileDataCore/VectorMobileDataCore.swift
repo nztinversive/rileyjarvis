@@ -97,7 +97,7 @@ public enum VectorMobileDataError: LocalizedError, Equatable {
         case .invalid(let message): return message
         case .notFound: return "Item not found."
         case .confirmationRequired: return "Explicit confirmation is required."
-        case .itemChanged: return "The selected item changed. Review it and confirm deletion again."
+        case .itemChanged: return "The selected item changed. Review the latest version and try again."
         case .storageLimit: return "Local storage limit reached."
         case .unsupportedSchema: return "This data was created by a newer Vector version."
         case .corruptStorePreserved: return "Local data was damaged. The original file was preserved for recovery."
