@@ -11,6 +11,10 @@
     "pack": "npm run build && electron-builder --dir",
     "dist:win": "npm run build && electron-builder --win portable --x64 --publish=never",
     "dist:win:nsis": "npm run build && electron-builder --win nsis --x64 --publish=never",
+    "server:start": "node server/index.cjs",
+    "server:dev": "node --watch server/index.cjs",
+    "server:test": "node --test test/server.test.cjs",
+    "server:smoke": "node server/smoke.cjs",
     "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
