@@ -49,6 +49,17 @@ test("the mobile conversation control names every connection and listening state
   assert.equal(connectionControlPresentation("error", "error").detail, "Connection failed");
 });
 
+test("typed prompts stay intact until a conversation is connected", () => {
+  const app = read("src/App.tsx");
+  const mobile = read("src/components/MobileAppShell.tsx");
+
+  assert.match(app, /if \(connectionState !== "connected" \|\| !clientRef\.current\)/);
+  assert.ok(app.indexOf('setStatus(message)') < app.indexOf('clientRef.current.sendText(trimmed)'));
+  assert.ok(app.indexOf('clientRef.current.sendText(trimmed)') < app.indexOf('setTextPrompt("")'));
+  assert.match(mobile, /disabled=\{connectionState !== "connected" \|\| !textPrompt\.trim\(\)\}/);
+  assert.match(mobile, /Connect a conversation before sending a message/);
+});
+
 test("Realtime connection failures remain in an explicit error state until retry or disconnect", async () => {
   const states = [];
   const moods = [];
@@ -114,10 +125,12 @@ test("mobile markup and responsive styles preserve accessibility and iPhone layo
   assert.match(mobile, /aria-live="polite"/);
   assert.match(mobile, /aria-label=\{`\$\{control\.label\}\. \$\{control\.detail\}`\}/);
   assert.match(mobile, /headingRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(mobile, /disabled=\{connectionState !== "connected" \|\| !textPrompt\.trim\(\)\}/);
   assert.match(styles, /env\(safe-area-inset-top\)/);
   assert.match(styles, /env\(safe-area-inset-bottom\)/);
   assert.match(styles, /height: 100dvh/);
   assert.match(styles, /min-height: 44px/);
+  assert.match(styles, /\.mobile-shell \.vector-orb[\s\S]*?width: var\(--orb-size\)[\s\S]*?height: var\(--orb-size\)/);
   assert.match(styles, /\.mobile-page-scroll[\s\S]*?overflow-x: hidden/);
   assert.match(styles, /@media \(max-height: 700px\) and \(orientation: portrait\)/);
   assert.match(styles, /@media \(orientation: landscape\) and \(max-height: 520px\)/);

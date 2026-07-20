@@ -325,7 +325,15 @@ function TalkScreen({
                 enterKeyHint="send"
                 placeholder="Type to Vector"
               />
-              <button type="submit" aria-label="Send message" disabled={!textPrompt.trim()}>
+              <button
+                type="submit"
+                aria-label={
+                  connectionState === "connected"
+                    ? "Send message"
+                    : "Connect a conversation before sending a message"
+                }
+                disabled={connectionState !== "connected" || !textPrompt.trim()}
+              >
                 <Send size={20} />
               </button>
               <button type="button" aria-label="Close message field" onClick={onToggleTypeInput}>

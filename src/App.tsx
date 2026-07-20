@@ -235,8 +235,14 @@ export default function App() {
   function sendTextPrompt() {
     const trimmed = textPrompt.trim();
     if (!trimmed) return;
+    if (connectionState !== "connected" || !clientRef.current) {
+      const message = "Connect Vector before sending a text prompt.";
+      setStatus(message);
+      setTranscript((items) => [newEntry("system", message), ...items].slice(0, 80));
+      return;
+    }
     lastActivityRef.current = Date.now();
-    clientRef.current?.sendText(trimmed);
+    clientRef.current.sendText(trimmed);
     setTextPrompt("");
     setShowTypeInput(false);
   }
