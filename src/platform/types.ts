@@ -67,9 +67,15 @@ export type RemoteCodexCapability = {
   subscribeToLifecycle: (callback: (event: RemoteCodexLifecycleEvent) => void) => () => void;
 };
 
+export type AppLifecycleCapability = {
+  subscribe: (callback: (isActive: boolean) => void) => () => void;
+};
+
 export type VectorPlatform = {
   createRealtimeCredential: () => Promise<RealtimeCredential>;
   executeTool: (toolCall: VectorToolCall) => Promise<VectorToolResult>;
   listToolSpecs: () => Promise<VectorToolSpec[]>;
+  appLifecycle?: AppLifecycleCapability;
+  openExternalUrl?: (url: string) => Promise<void>;
   remoteCodex?: RemoteCodexCapability;
 };

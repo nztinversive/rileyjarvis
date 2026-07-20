@@ -1,6 +1,9 @@
+import { getCapacitorIOSVectorPlatform } from "./capacitor";
 import { getElectronVectorPlatform } from "./electron";
+import { resolveVectorPlatform } from "./resolver";
 
 export type {
+  AppLifecycleCapability,
   RealtimeCredential,
   RemoteCodexCapability,
   RemoteCodexLifecycleEvent,
@@ -13,5 +16,5 @@ export type {
 } from "./types";
 
 export function getVectorPlatform() {
-  return getElectronVectorPlatform(window);
+  return resolveVectorPlatform(getCapacitorIOSVectorPlatform(), getElectronVectorPlatform(window));
 }

@@ -9,6 +9,7 @@ type ArtifactPanelProps = {
   fullscreen: boolean;
   onToggleVisible: () => void;
   onToggleFullscreen: () => void;
+  onOpenExternalUrl?: (url: string) => Promise<void>;
 };
 
 type MermaidState = {
@@ -83,7 +84,7 @@ mermaid.initialize({
   securityLevel: "strict",
 });
 
-export function ArtifactPanel({ artifact, visible, fullscreen, onToggleVisible, onToggleFullscreen }: ArtifactPanelProps) {
+export function ArtifactPanel({ artifact, visible, fullscreen, onToggleVisible, onToggleFullscreen, onOpenExternalUrl }: ArtifactPanelProps) {
   const [mermaidState, setMermaidState] = useState<MermaidState>({ svg: "", error: null, source: "" });
   const rawId = useId();
   const mermaidId = useMemo(() => `mermaid-${rawId.replace(/[^a-zA-Z0-9_-]/g, "")}`, [rawId]);
@@ -143,7 +144,7 @@ export function ArtifactPanel({ artifact, visible, fullscreen, onToggleVisible, 
       <div className="artifact-body">
         {artifact ? (
           <div className="artifact-arrival" key={`${artifact.kind}:${artifact.title}:${artifact.content.length}`}>
-            {renderArtifact(artifact, mermaidState)}
+            {renderArtifact(artifact, mermaidState, onOpenExternalUrl)}
           </div>
         ) : (
           <EmptyArtifact />
@@ -168,7 +169,11 @@ function EmptyArtifact() {
   );
 }
 
-function renderArtifact(artifact: VectorArtifact, mermaidState: MermaidState) {
+function renderArtifact(
+  artifact: VectorArtifact,
+  mermaidState: MermaidState,
+  onOpenExternalUrl?: (url: string) => Promise<void>,
+) {
   if (artifact.kind === "table") {
     return <JsonTable content={artifact.content} />;
   }
@@ -234,7 +239,7 @@ function renderArtifact(artifact: VectorArtifact, mermaidState: MermaidState) {
   }
 
   if (artifact.kind === "markdown") {
-    return <MarkdownArtifact content={artifact.content} />;
+    return <MarkdownArtifact content={artifact.content} onOpenExternalUrl={onOpenExternalUrl} />;
   }
 
   if (artifact.kind === "progress") {
@@ -558,7 +563,13 @@ function parseThumbnailBoard(content: string): ThumbnailBoardData | null {
   }
 }
 
-function MarkdownArtifact({ content }: { content: string }) {
+function MarkdownArtifact({
+  content,
+  onOpenExternalUrl,
+}: {
+  content: string;
+  onOpenExternalUrl?: (url: string) => Promise<void>;
+}) {
   const [visibleContent, setVisibleContent] = useState("");
 
   useEffect(() => {
@@ -577,28 +588,28 @@ function MarkdownArtifact({ content }: { content: string }) {
   return (
     <div className="markdown-artifact">
       <div className="stream-line" />
-      {renderMarkdown(visibleContent)}
+      {renderMarkdown(visibleContent, onOpenExternalUrl)}
     </div>
   );
 }
 
-function renderMarkdown(content: string) {
+function renderMarkdown(content: string, onOpenExternalUrl?: (url: string) => Promise<void>) {
   return content.split("\n").map((line, index) => {
     if (line.startsWith("# ")) {
-      return <h1 key={index}>{renderInline(line.slice(2))}</h1>;
+      return <h1 key={index}>{renderInline(line.slice(2), onOpenExternalUrl)}</h1>;
     }
     if (line.startsWith("## ")) {
-      return <h2 key={index}>{renderInline(line.slice(3))}</h2>;
+      return <h2 key={index}>{renderInline(line.slice(3), onOpenExternalUrl)}</h2>;
     }
     if (line.startsWith("### ")) {
-      return <h3 key={index}>{renderInline(line.slice(4))}</h3>;
+      return <h3 key={index}>{renderInline(line.slice(4), onOpenExternalUrl)}</h3>;
     }
     const bullet = line.match(/^(\s*)[-*] (.*)$/);
     if (bullet) {
       const depth = Math.min(3, Math.floor(bullet[1].length / 2));
       return (
         <li key={index} style={depth > 0 ? { marginLeft: `${18 + depth * 16}px` } : undefined}>
-          {renderInline(bullet[2])}
+          {renderInline(bullet[2], onOpenExternalUrl)}
         </li>
       );
     }
@@ -606,18 +617,18 @@ function renderMarkdown(content: string) {
     if (numbered) {
       return (
         <li className="markdown-numbered" key={index} data-number={`${numbered[1]}.`}>
-          {renderInline(numbered[2])}
+          {renderInline(numbered[2], onOpenExternalUrl)}
         </li>
       );
     }
     if (!line.trim()) {
       return <div className="markdown-gap" key={index} />;
     }
-    return <p key={index}>{renderInline(line)}</p>;
+    return <p key={index}>{renderInline(line, onOpenExternalUrl)}</p>;
   });
 }
 
-function renderInline(text: string) {
+function renderInline(text: string, onOpenExternalUrl?: (url: string) => Promise<void>) {
   const parts: ReactNode[] = [];
   const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
   let lastIndex = 0;
@@ -625,8 +636,22 @@ function renderInline(text: string) {
 
   while ((match = linkRegex.exec(text)) !== null) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    const url = match[2];
     parts.push(
-      <a href={match[2]} key={`${match[2]}-${match.index}`} target="_blank" rel="noreferrer">
+      <a
+        href={url}
+        key={`${url}-${match.index}`}
+        target="_blank"
+        rel="noreferrer"
+        onClick={
+          onOpenExternalUrl
+            ? (event) => {
+                event.preventDefault();
+                void onOpenExternalUrl(url).catch(() => undefined);
+              }
+            : undefined
+        }
+      >
         {match[1]}
       </a>,
     );

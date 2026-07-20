@@ -131,7 +131,9 @@ Vector runs locally. Depending on the features you use, macOS may ask for:
 
 Computer-control tools are blocked until the app is in computer-use mode. Computer-control tools are currently exposed only on macOS; on Windows, voice, artifacts, Project Cockpit, notes, records, web search, image generation, and thumbnails remain available.
 
-The renderer accesses runtime capabilities through a typed platform boundary. Electron's preload bridge is implemented by the desktop adapter; a future iOS adapter can provide mobile capabilities without adding Electron globals to shared app logic. See [docs/platform-boundary.md](docs/platform-boundary.md).
+The renderer accesses runtime capabilities through a typed platform boundary. Electron's preload bridge remains implemented by the desktop adapter, while native Capacitor iOS resolves to a Keychain- and backend-backed mobile adapter before desktop/browser fallback. See [docs/platform-boundary.md](docs/platform-boundary.md).
+
+The first iOS shell targets iOS 15+ with Capacitor 8 and Xcode 26+. Simulator and physical-device setup, secure bootstrap provisioning boundaries, and the limits of Phase 3 validation are documented in [docs/ios.md](docs/ios.md). Physical-iPhone voice remains unproven until Phase 5.
 
 ## Remote Codex over Tailscale
 
@@ -195,6 +197,10 @@ npm test
 npm run build
 npm run server:test
 npm run server:smoke
+npm run ios:sync
+npm run ios:open
+npm run ios:run
+npm run ios:verify
 npm run pack
 npm run dist:win
 npm start
