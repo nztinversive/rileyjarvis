@@ -331,7 +331,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         }
         let values = try storeURL.resourceValues(forKeys: [.fileSizeKey])
         if (values.fileSize ?? 0) > Self.maxFileBytes {
-            if let probedSchemaVersion = try probeSchemaVersionLocked(), probedSchemaVersion > Self.schemaVersion {
+            if let probedSchemaVersion = try probeSchemaVersionLocked(), probedSchemaVersion != Self.schemaVersion {
                 throw VectorMobileDataError.unsupportedSchema
             }
             return try recoverCorruptStoreLocked()
@@ -362,41 +362,60 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         var escaped = false
         var expectingTopLevelKey = false
         var capturingTopLevelKey = false
+        var topLevelKeyOverflowed = false
         var keyBytes: [UInt8] = []
         var currentKeyIsSchemaVersion = false
         var waitingForSchemaValue = false
         var numberBytes: [UInt8] = []
+        let maxKeyTokenBytes = 128
+        let maxNumberTokenBytes = 64
 
         while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
             for byte in chunk {
                 if inString {
                     if escaped {
-                        if capturingTopLevelKey, keyBytes.count <= 128 { keyBytes.append(byte) }
+                        if capturingTopLevelKey {
+                            if keyBytes.count < maxKeyTokenBytes { keyBytes.append(byte) }
+                            else { topLevelKeyOverflowed = true }
+                        }
                         escaped = false
                         continue
                     }
                     if byte == 0x5C {
-                        if capturingTopLevelKey, keyBytes.count <= 128 { keyBytes.append(byte) }
+                        if capturingTopLevelKey {
+                            if keyBytes.count < maxKeyTokenBytes { keyBytes.append(byte) }
+                            else { topLevelKeyOverflowed = true }
+                        }
                         escaped = true
                         continue
                     }
                     if byte == 0x22 {
                         inString = false
                         if capturingTopLevelKey {
-                            let keyLiteral = Data([0x22] + keyBytes + [0x22])
-                            currentKeyIsSchemaVersion = (try? decoder.decode(String.self, from: keyLiteral)) == "schemaVersion"
+                            if topLevelKeyOverflowed {
+                                currentKeyIsSchemaVersion = false
+                            } else {
+                                let keyLiteral = Data([0x22] + keyBytes + [0x22])
+                                currentKeyIsSchemaVersion = (try? decoder.decode(String.self, from: keyLiteral)) == "schemaVersion"
+                            }
                             capturingTopLevelKey = false
                             expectingTopLevelKey = false
                         }
                         continue
                     }
-                    if capturingTopLevelKey, keyBytes.count <= 128 { keyBytes.append(byte) }
+                    if capturingTopLevelKey {
+                        if keyBytes.count < maxKeyTokenBytes { keyBytes.append(byte) }
+                        else { topLevelKeyOverflowed = true }
+                    }
                     continue
                 }
 
                 if waitingForSchemaValue {
                     if numberBytes.isEmpty && (byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D) { continue }
                     if (0x30...0x39).contains(byte) || byte == 0x2D || byte == 0x2B || byte == 0x2E || byte == 0x45 || byte == 0x65 {
+                        guard numberBytes.count < maxNumberTokenBytes else {
+                            throw VectorMobileDataError.unsupportedSchema
+                        }
                         numberBytes.append(byte)
                         continue
                     }
@@ -423,6 +442,7 @@ public final class VectorMobileDataStore: @unchecked Sendable {
                     inString = true
                     if depth == 1, expectingTopLevelKey {
                         capturingTopLevelKey = true
+                        topLevelKeyOverflowed = false
                         keyBytes.removeAll(keepingCapacity: true)
                     }
                 default:

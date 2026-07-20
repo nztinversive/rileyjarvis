@@ -116,6 +116,20 @@ final class VectorMobileDataCoreTests: XCTestCase {
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
     }
 
+    func testOversizedIndeterminateSchemaTokenIsPreservedReadOnly() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storeURL = directory.appendingPathComponent("vector-mobile-data.json")
+        let source = "{\"schemaVersion\":\(String(repeating: "9", count: 1_000)),\"padding\":\"\(String(repeating: "x", count: VectorMobileDataStore.maxFileBytes))\"}"
+        try Data(source.utf8).write(to: storeURL)
+        let store = VectorMobileDataStore(directoryURL: directory)
+        XCTAssertThrowsError(try store.snapshot()) { XCTAssertEqual($0 as? VectorMobileDataError, .unsupportedSchema) }
+        XCTAssertThrowsError(try store.addNote(text: "Must not overwrite", tags: [])) {
+            XCTAssertEqual($0 as? VectorMobileDataError, .unsupportedSchema)
+        }
+        XCTAssertEqual(try String(contentsOf: storeURL, encoding: .utf8), source)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix("vector-mobile-data.corrupt-") })
+    }
+
     func testReservedRecordFieldsAndUnsafeImagesFailClosed() throws {
         let store = VectorMobileDataStore(directoryURL: directory)
         XCTAssertThrowsError(try store.createRecord(collection: "tasks", title: "Unsafe", fields: ["__proto__": .object(["secret": .bool(true)])]))
