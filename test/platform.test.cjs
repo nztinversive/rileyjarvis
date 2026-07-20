@@ -6,7 +6,9 @@ const test = require("node:test");
 const ts = require("typescript");
 
 const { createElectronVectorPlatform } = loadTypeScriptModule("../src/platform/electron.ts");
-const { prepareRealtimeSession, realtimeConnectedStatus } = loadTypeScriptModule("../src/lib/realtime.ts");
+const { createIOSVectorPlatform } = loadTypeScriptModule("../src/platform/ios.ts");
+const { resolveVectorPlatform } = loadTypeScriptModule("../src/platform/resolver.ts");
+const { prepareRealtimeSession, realtimeConnectedStatus, VectorRealtimeClient } = loadTypeScriptModule("../src/lib/realtime.ts");
 
 test("the Electron adapter maps the legacy preload bridge to VectorPlatform", async () => {
   const calls = [];
@@ -61,6 +63,180 @@ test("the Electron adapter omits Remote Codex when the preload bridge does not e
   assert.equal(platform.remoteCodex, undefined);
 });
 
+test("the resolver selects native iOS before Electron and falls back safely", () => {
+  const ios = { name: "ios" };
+  const electron = { name: "electron" };
+
+  assert.equal(resolveVectorPlatform(ios, electron), ios);
+  assert.equal(resolveVectorPlatform(null, electron), electron);
+  assert.equal(resolveVectorPlatform(null, null), null);
+});
+
+test("the iOS adapter sends the exact backend session request and returns only credential fields", async () => {
+  const calls = [];
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: {
+      async get() {
+        calls.push(["keychain", "get"]);
+        return { value: "bootstrap-credential" };
+      },
+      async set(options) {
+        calls.push(["keychain", "set", options]);
+      },
+      async delete() {
+        calls.push(["keychain", "delete"]);
+      },
+    },
+    async fetchImpl(url, init) {
+      calls.push(["fetch", url, init]);
+      return new Response(JSON.stringify({ value: "ephemeral-value", expiresAt: 1234, ignored: "field" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  assert.deepEqual(await platform.createRealtimeCredential(), { value: "ephemeral-value", expiresAt: 1234 });
+  assert.deepEqual(calls[0], ["keychain", "get"]);
+  assert.equal(calls[1][0], "fetch");
+  assert.equal(calls[1][1], "https://vector.example/api/realtime/session");
+  assert.equal(calls[1][2].method, "POST");
+  assert.equal(calls[1][2].body, "{}");
+  assert.deepEqual(calls[1][2].headers, {
+    Authorization: "Bearer bootstrap-credential",
+    "Content-Type": "application/json",
+  });
+  assert.ok(calls[1][2].signal instanceof AbortSignal);
+});
+
+test("the iOS adapter rejects missing backend URL before reading secure storage", async () => {
+  let reads = 0;
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "",
+    secureStorage: {
+      async get() {
+        reads += 1;
+        return { value: "bootstrap-credential" };
+      },
+      async set() {},
+      async delete() {},
+    },
+    async fetchImpl() {
+      throw new Error("must not fetch");
+    },
+  });
+
+  await assert.rejects(platform.createRealtimeCredential(), /Set VITE_VECTOR_BACKEND_URL/);
+  assert.equal(reads, 0);
+});
+
+test("the iOS adapter rejects a missing Keychain bootstrap credential without fetching", async () => {
+  let fetches = 0;
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: {
+      async get() {
+        return {};
+      },
+      async set() {},
+      async delete() {},
+    },
+    async fetchImpl() {
+      fetches += 1;
+      throw new Error("must not fetch");
+    },
+  });
+
+  await assert.rejects(platform.createRealtimeCredential(), /No bootstrap session credential is stored in Keychain/);
+  assert.equal(fetches, 0);
+});
+
+test("the iOS adapter rejects malformed credential responses", async () => {
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: secureStorageWith("bootstrap-credential"),
+    async fetchImpl() {
+      return new Response(JSON.stringify({ value: "ephemeral-value", expiresAt: "later" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  await assert.rejects(platform.createRealtimeCredential(), /malformed credential/);
+});
+
+test("the iOS adapter bounds requests and never exposes underlying error or token text", async () => {
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: secureStorageWith("never-print-bootstrap-token"),
+    timeoutMs: 10,
+    fetchImpl(_url, init) {
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(new Error("never-print-bootstrap-token transport detail")));
+      });
+    },
+  });
+
+  const error = await platform.createRealtimeCredential().then(
+    () => null,
+    (value) => value,
+  );
+  assert.match(error.message, /timed out/);
+  assert.doesNotMatch(error.message, /never-print|transport detail/);
+});
+
+test("the iOS adapter exposes only mobile tools and safely rejects desktop tools and local images", async () => {
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: secureStorageWith("bootstrap-credential"),
+    async fetchImpl() {
+      throw new Error("not used");
+    },
+  });
+  const specs = await platform.listToolSpecs();
+
+  assert.deepEqual(
+    specs.map((tool) => tool.name),
+    ["set_mode", "artifact_show", "show_menu"],
+  );
+  assert.equal(specs.some((tool) => tool.name.startsWith("remote_codex")), false);
+  assert.deepEqual(await platform.executeTool({ name: "remote_codex_start", arguments: {} }), {
+    ok: false,
+    error: "That desktop tool is not available on iOS.",
+  });
+  assert.deepEqual(await platform.executeTool({ name: "set_mode", arguments: { mode: "computer" } }), {
+    ok: false,
+    error: "Computer-use mode is not available on iOS.",
+  });
+  assert.deepEqual(
+    await platform.executeTool({
+      name: "artifact_show",
+      arguments: { title: "Local image", kind: "image", content: "/Users/example/secret.png" },
+    }),
+    { ok: false, error: "That artifact is not available on iOS." },
+  );
+});
+
+test("the iOS adapter opens only HTTPS links through its native browser boundary", async () => {
+  const opened = [];
+  const platform = createIOSVectorPlatform({
+    backendBaseUrl: "https://vector.example",
+    secureStorage: secureStorageWith("bootstrap-credential"),
+    async fetchImpl() {
+      throw new Error("not used");
+    },
+    async openExternalUrl(url) {
+      opened.push(url);
+    },
+  });
+
+  await platform.openExternalUrl("https://example.com/path");
+  await assert.rejects(platform.openExternalUrl("file:///Users/example/secret"), /secure web links/);
+  assert.deepEqual(opened, ["https://example.com/path"]);
+});
+
 test("shared renderer modules do not access the legacy Electron bridge directly", () => {
   for (const relativePath of ["../src/App.tsx", "../src/lib/realtime.ts"]) {
     const source = fs.readFileSync(path.resolve(__dirname, relativePath), "utf8");
@@ -92,6 +268,52 @@ test("Realtime preserves the Remote Codex ready message when the desktop tool is
   assert.equal(realtimeConnectedStatus(session.remoteCodexAvailable), "Vector is live. Remote Codex is ready.");
 });
 
+test("disconnecting an in-flight session prevents native setup from continuing", async () => {
+  let resolveCredential;
+  let peerConnections = 0;
+  const originalPeerConnection = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = class {
+    constructor() {
+      peerConnections += 1;
+    }
+  };
+
+  try {
+    const states = [];
+    const client = new VectorRealtimeClient(
+      {
+        createRealtimeCredential: () =>
+          new Promise((resolve) => {
+            resolveCredential = resolve;
+          }),
+        executeTool: async () => ({ ok: true }),
+        listToolSpecs: async () => [],
+      },
+      {
+        onConnectionState: (state) => states.push(state),
+        onMood() {},
+        onMouthShape() {},
+        onTranscript() {},
+        onArtifact() {},
+        onMode() {},
+        onStatus() {},
+        onThumbnailReady() {},
+      },
+    );
+
+    const connecting = client.connect();
+    await new Promise((resolve) => setImmediate(resolve));
+    client.disconnect();
+    resolveCredential({ value: "ephemeral-value", expiresAt: 1234 });
+    await connecting;
+
+    assert.equal(peerConnections, 0);
+    assert.deepEqual(states, ["connecting", "idle"]);
+  } finally {
+    globalThis.RTCPeerConnection = originalPeerConnection;
+  }
+});
+
 function loadTypeScriptModule(relativePath) {
   const filename = path.resolve(__dirname, relativePath);
   const source = fs.readFileSync(filename, "utf8");
@@ -107,4 +329,14 @@ function loadTypeScriptModule(relativePath) {
   loaded.paths = Module._nodeModulePaths(path.dirname(filename));
   loaded._compile(output, filename);
   return loaded.exports;
+}
+
+function secureStorageWith(value) {
+  return {
+    async get() {
+      return { value };
+    },
+    async set() {},
+    async delete() {},
+  };
 }

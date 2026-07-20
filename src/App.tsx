@@ -64,6 +64,16 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  useEffect(() => {
+    if (!vectorPlatform?.appLifecycle) return;
+    return vectorPlatform.appLifecycle.subscribe((isActive) => {
+      if (isActive || !clientRef.current) return;
+      clientRef.current.disconnect();
+      clientRef.current = null;
+      setStatus("Disconnected while Vector is inactive.");
+    });
+  }, []);
+
   function toggleTheme() {
     setTheme((current) => {
       const next = current === "day" ? "night" : "day";
@@ -185,8 +195,14 @@ export default function App() {
       reportPlatformMissing();
       return;
     }
-    setMode(nextMode);
     const result = await vectorPlatform.executeTool({ name: "set_mode", arguments: { mode: nextMode } });
+    if (!result.ok) {
+      const message = result.error || "That mode is not available on this platform.";
+      setStatus(message);
+      setTranscript((items) => [newEntry("system", message), ...items].slice(0, 80));
+      return;
+    }
+    setMode(nextMode);
     if (result.artifact) setArtifact(result.artifact);
     if (nextMode === "computer") {
       setArtifactVisible(false);
@@ -415,6 +431,7 @@ export default function App() {
         fullscreen={artifactFullscreen}
         onToggleVisible={() => setArtifactVisible((value) => !value)}
         onToggleFullscreen={() => setArtifactFullscreen((value) => !value)}
+        onOpenExternalUrl={vectorPlatform?.openExternalUrl}
       />
     </main>
   );

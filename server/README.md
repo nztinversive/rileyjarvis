@@ -1,6 +1,6 @@
 # Vector Realtime session service
 
-This service is the Phase 2 trust boundary for future native clients. It keeps the standard `OPENAI_API_KEY`, Realtime session policy, bootstrap identities, rate limiting, and safety-identifier secret on the server. Clients receive only `{ "value": "ek_...", "expiresAt": 123 }`.
+This service is the Phase 2 trust boundary used by the Phase 3 iOS adapter. It keeps the standard `OPENAI_API_KEY`, Realtime session policy, bootstrap identities, rate limiting, and safety-identifier secret on the server. Clients receive only `{ "value": "ek_...", "expiresAt": 123 }`.
 
 ## Endpoints
 

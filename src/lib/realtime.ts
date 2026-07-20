@@ -99,6 +99,7 @@ export class VectorRealtimeClient {
   private outputAnalyser: AnalyserNode | null = null;
   private outputMeterFrame = 0;
   private smoothedMouthShape: MouthShape = silentMouthShape();
+  private connectionAttempt = 0;
 
   constructor(platform: VectorPlatform, callbacks: RealtimeCallbacks) {
     this.platform = platform;
@@ -107,34 +108,45 @@ export class VectorRealtimeClient {
 
   async connect(): Promise<void> {
     if (this.pc) return;
+    const connectionAttempt = ++this.connectionAttempt;
     this.callbacks.onConnectionState("connecting");
     this.callbacks.onMood("thinking");
     this.callbacks.onStatus("Minting a Realtime client secret.");
 
     try {
       const session = await prepareRealtimeSession(this.platform);
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
       this.toolSpecs = session.toolSpecs;
       this.remoteCodexAvailable = session.remoteCodexAvailable;
       const pc = new RTCPeerConnection();
+      this.pc = pc;
       const audio = document.createElement("audio");
       audio.autoplay = true;
 
       pc.ontrack = (event) => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
         audio.srcObject = event.streams[0];
         this.startOutputMeter(event.streams[0]);
       };
 
-      this.micStream = await navigator.mediaDevices.getUserMedia({
+      const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
       });
-      pc.addTrack(this.micStream.getAudioTracks()[0], this.micStream);
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) {
+        micStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      this.micStream = micStream;
+      pc.addTrack(micStream.getAudioTracks()[0], micStream);
 
       const dc = pc.createDataChannel("oai-events");
+      this.dc = dc;
       dc.addEventListener("open", () => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
         this.callbacks.onConnectionState("connected");
         this.callbacks.onMood("idle");
         this.callbacks.onStatus(realtimeConnectedStatus(this.remoteCodexAvailable));
@@ -146,6 +158,7 @@ export class VectorRealtimeClient {
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
 
       const sdpResponse = await fetch(realtimeUrl, {
         method: "POST",
@@ -155,19 +168,20 @@ export class VectorRealtimeClient {
           "Content-Type": "application/sdp",
         },
       });
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
 
       if (!sdpResponse.ok) {
         throw new Error(`Realtime WebRTC call failed: ${sdpResponse.status} ${await sdpResponse.text()}`);
       }
 
+      const answer = await sdpResponse.text();
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
       await pc.setRemoteDescription({
         type: "answer",
-        sdp: await sdpResponse.text(),
+        sdp: answer,
       });
-
-      this.pc = pc;
-      this.dc = dc;
     } catch (error) {
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
       this.callbacks.onConnectionState("error");
       this.callbacks.onMood("error");
       this.callbacks.onStatus(error instanceof Error ? error.message : String(error));
@@ -176,6 +190,7 @@ export class VectorRealtimeClient {
   }
 
   disconnect(): void {
+    this.connectionAttempt += 1;
     this.dc?.close();
     this.pc?.close();
     this.micStream?.getTracks().forEach((track) => track.stop());
@@ -189,6 +204,10 @@ export class VectorRealtimeClient {
     this.callbacks.onConnectionState("idle");
     this.callbacks.onMood("idle");
     this.callbacks.onMouthShape(silentMouthShape());
+  }
+
+  private isCurrentConnectionAttempt(connectionAttempt: number): boolean {
+    return connectionAttempt === this.connectionAttempt;
   }
 
   sendText(text: string): void {
