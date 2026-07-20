@@ -5,6 +5,7 @@ import {
   emptyMobileStore,
   mobileDataLimits,
   mobileLibraryReducer,
+  recordCollectionNames,
   recordMatchesSearch,
   savedItemSharePayload,
   stableJSONStringify,
@@ -196,12 +197,18 @@ function NotesLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelet
 
 function RecordsLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDelete }: { items: VectorMobileRecord[]; nativeShare?: NativeShareCapability; pending: boolean; onCreate: (collection: string, title: string, data: Record<string, unknown>) => Promise<boolean>; onUpdate: (id: string, title: string) => Promise<boolean>; onDelete: (id: string) => Promise<boolean> }) {
   const [mode, setMode] = useState<"browse" | "new">("browse");
-  const [collection, setCollection] = useState("general");
+  const [browseCollection, setBrowseCollection] = useState("general");
+  const [newCollection, setNewCollection] = useState("general");
   const [title, setTitle] = useState("");
   const [dataText, setDataText] = useState("{}");
   const [formError, setFormError] = useState("");
   const [query, setQuery] = useState("");
-  const matches = useMemo(() => items.filter((item) => recordMatchesSearch(item, collection.trim(), query)), [collection, items, query]);
+  const collections = useMemo(() => recordCollectionNames(items), [items]);
+  const matches = useMemo(() => items.filter((item) => recordMatchesSearch(item, browseCollection, query)), [browseCollection, items, query]);
+
+  useEffect(() => {
+    if (collections.length && !collections.includes(browseCollection)) setBrowseCollection(collections[0]);
+  }, [browseCollection, collections]);
   return (
     <section aria-labelledby="mobile-records-heading">
       <div className="mobile-library-heading"><div><span>Structured and searchable</span><h2 id="mobile-records-heading">Records</h2></div><b>{items.length}/{mobileDataLimits.maxRecords}</b></div>
@@ -210,22 +217,23 @@ function RecordsLibrary({ items, nativeShare, pending, onCreate, onUpdate, onDel
         <button type="button" className={mode === "new" ? "active" : ""} aria-pressed={mode === "new"} onClick={() => setMode("new")}><Plus size={17} />New record</button>
       </div>
       {mode === "new" ? (
-        <form className="mobile-library-form" onSubmit={(event) => { event.preventDefault(); try { const parsed = JSON.parse(dataText); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); setFormError(""); void onCreate(collection, title, parsed).then((saved) => { if (saved) { setTitle(""); setDataText("{}"); setMode("browse"); } }); } catch { setFormError("Structured data must be a JSON object within the local size limit."); } }}>
-          <label htmlFor="mobile-record-collection">Collection</label><input id="mobile-record-collection" required maxLength={mobileDataLimits.maxCollectionLength} value={collection} onChange={(event) => setCollection(event.target.value)} />
+        <form className="mobile-library-form" onSubmit={(event) => { event.preventDefault(); try { const parsed = JSON.parse(dataText); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); setFormError(""); void onCreate(newCollection, title, parsed).then((saved) => { if (saved) { setBrowseCollection(newCollection.trim()); setTitle(""); setDataText("{}"); setMode("browse"); } }); } catch { setFormError("Structured data must be a JSON object within the local size limit."); } }}>
+          <label htmlFor="mobile-record-collection">Collection</label><input id="mobile-record-collection" required maxLength={mobileDataLimits.maxCollectionLength} value={newCollection} onChange={(event) => setNewCollection(event.target.value)} list="mobile-record-collections" />
           <label htmlFor="mobile-record-title">Record title</label><input id="mobile-record-title" required maxLength={mobileDataLimits.maxTitleLength} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="New record" />
           <label htmlFor="mobile-record-data">Structured data (JSON)</label><textarea id="mobile-record-data" value={dataText} onChange={(event) => setDataText(event.target.value)} maxLength={mobileDataLimits.maxRecordDataBytes} spellCheck={false} />
           {formError ? <p role="alert">{formError}</p> : null}
-          <button type="submit" disabled={pending || !collection.trim() || !title.trim()}><Plus size={18} />{pending ? "Saving…" : "Save record"}</button>
+          <button type="submit" disabled={pending || !newCollection.trim() || !title.trim()}><Plus size={18} />{pending ? "Saving…" : "Save record"}</button>
         </form>
       ) : (
         <>
           <div className="mobile-library-search-grid">
-            <label className="mobile-library-search" htmlFor="mobile-record-browse-collection">Collection<input id="mobile-record-browse-collection" maxLength={mobileDataLimits.maxCollectionLength} value={collection} onChange={(event) => setCollection(event.target.value)} /></label>
+            <label className="mobile-library-search" htmlFor="mobile-record-browse-collection">Collection<select id="mobile-record-browse-collection" value={browseCollection} disabled={!collections.length} onChange={(event) => setBrowseCollection(event.target.value)}>{collections.length ? collections.map((name) => <option key={name} value={name}>{name}</option>) : <option value="general">No collections yet</option>}</select></label>
             <label className="mobile-library-search" htmlFor="mobile-record-search">Search this collection<input id="mobile-record-search" type="search" maxLength={mobileDataLimits.maxSearchLength} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Title or structured data" /></label>
           </div>
           {!matches.length ? <EmptyState title="No matching records" detail="Choose a collection or create a new local record." /> : <div className="mobile-library-list">{matches.map((item) => <LibraryCard key={item.id} title={item.title} meta={`${item.collection} · ${formatDate(item.updatedAt)}`} body={stableJSONStringify(item.data)} disabled={pending} onShare={nativeShare ? () => share(nativeShare, item) : undefined} onEdit={() => promptEdit("Edit record title", item.title, (value) => onUpdate(item.id, value))} onDelete={() => confirmedDelete(`Delete “${item.title}”? This cannot be undone.`, () => onDelete(item.id))} />)}</div>}
         </>
       )}
+      <datalist id="mobile-record-collections">{collections.map((name) => <option key={name} value={name} />)}</datalist>
     </section>
   );
 }

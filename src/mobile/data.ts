@@ -209,6 +209,10 @@ export function recordMatchesSearch(record: VectorMobileRecord, collection: stri
   return stableSearchText(record).includes(needle);
 }
 
+export function recordCollectionNames(records: VectorMobileRecord[]): string[] {
+  return [...new Set(records.map((record) => record.collection))].sort((left, right) => left.localeCompare(right));
+}
+
 export function stableSearchText(record: VectorMobileRecord): string {
   return `${record.title}\n${record.collection}\n${stableJSONStringify(record.data)}`.toLocaleLowerCase("en-US");
 }

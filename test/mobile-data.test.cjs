@@ -9,6 +9,7 @@ const root = path.resolve(__dirname, "..");
 const {
   emptyMobileStore,
   mobileLibraryReducer,
+  recordCollectionNames,
   recordMatchesSearch,
   savedItemSharePayload,
   artifactSharePayload,
@@ -37,7 +38,12 @@ test("the shared mobile store validates version, deterministic ordering, duplica
   );
 });
 
-test("record search is stable across object insertion order and stays collection scoped", () => {
+test("record collections are discoverable and search stays stable and collection scoped", () => {
+  assert.deepEqual(recordCollectionNames([
+    record("record-0001"),
+    { ...record("record-0002"), collection: "ideas" },
+    { ...record("record-0003"), collection: "tasks" },
+  ]), ["ideas", "tasks"]);
   const left = { ...record("record-1"), data: { beta: 2, alpha: "Needle" } };
   const right = { ...record("record-2"), data: { alpha: "Needle", beta: 2 } };
   assert.equal(recordMatchesSearch(left, "tasks", "needle"), true);

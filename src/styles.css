@@ -2920,7 +2920,7 @@ td {
 .mobile-library-heading button:disabled, .mobile-library-form button:disabled { opacity: .45; }
 .mobile-library-form { display: grid; gap: 7px; margin-bottom: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--card-soft); }
 .mobile-library-form label, .mobile-library-search { color: var(--ink-faint); font: 700 11px/1.2 var(--font-body); }
-.mobile-library-form input, .mobile-library-form textarea, .mobile-library-search input { width: 100%; min-height: 44px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--card); font: 500 14px/1.35 var(--font-body); }
+.mobile-library-form input, .mobile-library-form textarea, .mobile-library-search input, .mobile-library-search select { width: 100%; min-height: 44px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--card); font: 500 14px/1.35 var(--font-body); }
 .mobile-library-form textarea { min-height: 96px; resize: vertical; }
 .mobile-library-view-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 13px; }
 .mobile-library-view-switcher button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); border-radius: 13px; color: var(--ink-faint); background: var(--card-soft); font-weight: 750; }
