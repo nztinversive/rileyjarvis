@@ -87,6 +87,7 @@ public enum VectorMobileDataError: LocalizedError, Equatable {
     case invalid(String)
     case notFound
     case confirmationRequired
+    case itemChanged
     case storageLimit
     case unsupportedSchema
     case corruptStorePreserved(String)
@@ -96,6 +97,7 @@ public enum VectorMobileDataError: LocalizedError, Equatable {
         case .invalid(let message): return message
         case .notFound: return "Item not found."
         case .confirmationRequired: return "Explicit confirmation is required."
+        case .itemChanged: return "The selected item changed. Review it and confirm deletion again."
         case .storageLimit: return "Local storage limit reached."
         case .unsupportedSchema: return "This data was created by a newer Vector version."
         case .corruptStorePreserved: return "Local data was damaged. The original file was preserved for recovery."
@@ -208,6 +210,18 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     }
 
     @discardableResult
+    public func deleteNote(ifUnchanged expected: VectorMobileNote) throws -> Bool {
+        try queue.sync {
+            var document = try loadLocked()
+            guard let index = document.notes.firstIndex(where: { $0.id == expected.id }) else { return false }
+            guard document.notes[index] == expected else { throw VectorMobileDataError.itemChanged }
+            document.notes.remove(at: index)
+            try persistLocked(document)
+            return true
+        }
+    }
+
+    @discardableResult
     public func createRecord(collection: String, title: String, fields: [String: VectorJSONValue], now: Date = Date(), id: String = UUID().uuidString.lowercased()) throws -> VectorMobileRecord {
         try queue.sync {
             let cleanCollection = try bounded(collection, label: "Collection", maxBytes: 256)
@@ -271,6 +285,18 @@ public final class VectorMobileDataStore: @unchecked Sendable {
     }
 
     @discardableResult
+    public func deleteRecord(ifUnchanged expected: VectorMobileRecord) throws -> Bool {
+        try queue.sync {
+            var document = try loadLocked()
+            guard let index = document.records.firstIndex(where: { $0.id == expected.id }) else { return false }
+            guard document.records[index] == expected else { throw VectorMobileDataError.itemChanged }
+            document.records.remove(at: index)
+            try persistLocked(document)
+            return true
+        }
+    }
+
+    @discardableResult
     public func saveArtifact(id: String?, title: String, kind: String, content: String, language: String?, now: Date = Date()) throws -> VectorSavedArtifact {
         try queue.sync {
             let cleanTitle = try bounded(title, label: "Title", maxBytes: 640)
@@ -316,6 +342,18 @@ public final class VectorMobileDataStore: @unchecked Sendable {
             let before = document.savedArtifacts.count
             document.savedArtifacts.removeAll { $0.id == id }
             guard document.savedArtifacts.count != before else { return false }
+            try persistLocked(document)
+            return true
+        }
+    }
+
+    @discardableResult
+    public func deleteArtifact(ifUnchanged expected: VectorSavedArtifact) throws -> Bool {
+        try queue.sync {
+            var document = try loadLocked()
+            guard let index = document.savedArtifacts.firstIndex(where: { $0.id == expected.id }) else { return false }
+            guard document.savedArtifacts[index] == expected else { throw VectorMobileDataError.itemChanged }
+            document.savedArtifacts.remove(at: index)
             try persistLocked(document)
             return true
         }

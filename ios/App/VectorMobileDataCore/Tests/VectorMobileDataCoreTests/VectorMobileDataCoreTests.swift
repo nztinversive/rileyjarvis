@@ -42,6 +42,17 @@ final class VectorMobileDataCoreTests: XCTestCase {
         XCTAssertFalse(try store.deleteRecord(id: record.id, confirmed: true))
     }
 
+    func testConfirmedDeletionRejectsAnItemChangedWhilePromptWasOpen() throws {
+        let store = VectorMobileDataStore(directoryURL: directory)
+        let original = try store.addNote(text: "Review this", tags: [], now: Date(timeIntervalSince1970: 1), id: "note-0001")
+        _ = try store.updateNote(id: original.id, text: "Changed after prompt", tags: nil, now: Date(timeIntervalSince1970: 2))
+
+        XCTAssertThrowsError(try store.deleteNote(ifUnchanged: original)) {
+            XCTAssertEqual($0 as? VectorMobileDataError, .itemChanged)
+        }
+        XCTAssertEqual(try store.snapshot().document.notes.first?.text, "Changed after prompt")
+    }
+
     func testCorruptionIsPreservedBeforeRecoveryWrites() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let storeURL = directory.appendingPathComponent("vector-mobile-data.json")

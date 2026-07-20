@@ -4,6 +4,28 @@ import UIKit
 
 @objc(VectorMobileDataPlugin)
 public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
+    private enum DeletionCandidate {
+        case note(VectorMobileNote)
+        case record(VectorMobileRecord)
+        case artifact(VectorSavedArtifact)
+
+        var kind: String {
+            switch self {
+            case .note: return "note"
+            case .record: return "record"
+            case .artifact: return "saved artifact"
+            }
+        }
+
+        var summary: String {
+            switch self {
+            case .note(let note): return String(note.text.prefix(180))
+            case .record(let record): return String("\(record.collection): \(record.title)".prefix(240))
+            case .artifact(let artifact): return String(artifact.title.prefix(240))
+            }
+        }
+    }
+
     public let identifier = "VectorMobileDataPlugin"
     public let jsName = "VectorMobileData"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -35,43 +57,65 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public func confirmDeletion(_ call: CAPPluginCall) {
         do {
             let kind = try required(call.getString("kind"), label: "Item type")
-            let summary = try required(call.getString("summary"), label: "Item summary")
-            guard kind.count <= 32, summary.count <= 240 else {
-                throw VectorMobileDataError.invalid("Deletion confirmation is too long.")
-            }
-            DispatchQueue.main.async { [weak self] in
-                guard let self, let presenter = self.bridge?.viewController else {
+            let id = try required(call.getString("id"), label: "Item ID")
+            operationQueue.async {
+                do {
+                    try self.ensureReadyForMutation()
+                    let candidate = try self.deletionCandidate(kind: kind, id: id)
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, let presenter = self.bridge?.viewController else {
+                            call.reject("Deletion confirmation is unavailable.", "CONFIRMATION_UNAVAILABLE")
+                            return
+                        }
+                        guard !self.confirmationInProgress, presenter.presentedViewController == nil else {
+                            call.reject("Another confirmation is already active.", "CONFIRMATION_IN_PROGRESS")
+                            return
+                        }
+                        self.confirmationInProgress = true
+                        let alert = UIAlertController(title: "Delete \(candidate.kind)?", message: candidate.summary, preferredStyle: .alert)
+                        let finish: (Bool) -> Void = { [weak alert] confirmed in
+                            guard let alert else {
+                                self.confirmationInProgress = false
+                                call.reject("Deletion confirmation is unavailable.", "CONFIRMATION_UNAVAILABLE")
+                                return
+                            }
+                            alert.dismiss(animated: !UIAccessibility.isReduceMotionEnabled) {
+                                if !confirmed {
+                                    self.confirmationInProgress = false
+                                    call.resolve(["confirmed": false])
+                                    return
+                                }
+                                self.operationQueue.async {
+                                    do {
+                                        guard try self.delete(candidate) else { throw VectorMobileDataError.notFound }
+                                        let result = try self.storeDictionary()
+                                        DispatchQueue.main.async {
+                                            self.confirmationInProgress = false
+                                            call.resolve(["confirmed": true, "store": result])
+                                        }
+                                    } catch let error as VectorMobileDataError {
+                                        DispatchQueue.main.async {
+                                            self.confirmationInProgress = false
+                                            call.reject(error.localizedDescription, self.errorCode(error))
+                                        }
+                                    } catch {
+                                        DispatchQueue.main.async {
+                                            self.confirmationInProgress = false
+                                            call.reject("Local data is unavailable.", "MOBILE_DATA_FAILED")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in finish(false) })
+                        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in finish(true) })
+                        presenter.present(alert, animated: true)
+                    }
+                } catch let error as VectorMobileDataError {
+                    call.reject(error.localizedDescription, self.errorCode(error))
+                } catch {
                     call.reject("Deletion confirmation is unavailable.", "CONFIRMATION_UNAVAILABLE")
-                    return
                 }
-                guard !self.confirmationInProgress, presenter.presentedViewController == nil else {
-                    call.reject("Another confirmation is already active.", "CONFIRMATION_IN_PROGRESS")
-                    return
-                }
-                self.confirmationInProgress = true
-                let alert = UIAlertController(
-                    title: "Delete \(kind)?",
-                    message: summary,
-                    preferredStyle: .alert
-                )
-                let finish: (Bool) -> Void = { [weak alert] confirmed in
-                    guard let alert else {
-                        self.confirmationInProgress = false
-                        call.reject("Deletion confirmation is unavailable.", "CONFIRMATION_UNAVAILABLE")
-                        return
-                    }
-                    alert.dismiss(animated: !UIAccessibility.isReduceMotionEnabled) {
-                        self.confirmationInProgress = false
-                        call.resolve(["confirmed": confirmed])
-                    }
-                }
-                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-                    finish(false)
-                })
-                alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
-                    finish(true)
-                })
-                presenter.present(alert, animated: true)
             }
         } catch let error as VectorMobileDataError {
             call.reject(error.localizedDescription, errorCode(error))
@@ -223,6 +267,31 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
     }
 
+    private func deletionCandidate(kind: String, id: String) throws -> DeletionCandidate {
+        let document = try store.snapshot().document
+        switch kind {
+        case "note":
+            guard let item = document.notes.first(where: { $0.id == id }) else { throw VectorMobileDataError.notFound }
+            return .note(item)
+        case "record":
+            guard let item = document.records.first(where: { $0.id == id }) else { throw VectorMobileDataError.notFound }
+            return .record(item)
+        case "saved artifact":
+            guard let item = document.savedArtifacts.first(where: { $0.id == id }) else { throw VectorMobileDataError.notFound }
+            return .artifact(item)
+        default:
+            throw VectorMobileDataError.invalid("Unsupported deletion type.")
+        }
+    }
+
+    private func delete(_ candidate: DeletionCandidate) throws -> Bool {
+        switch candidate {
+        case .note(let item): return try store.deleteNote(ifUnchanged: item)
+        case .record(let item): return try store.deleteRecord(ifUnchanged: item)
+        case .artifact(let item): return try store.deleteArtifact(ifUnchanged: item)
+        }
+    }
+
     private func required(_ value: String?, label: String) throws -> String {
         guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw VectorMobileDataError.invalid("\(label) is required.")
@@ -273,6 +342,7 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
         case .invalid: return "INVALID_ARGUMENT"
         case .notFound: return "NOT_FOUND"
         case .confirmationRequired: return "CONFIRMATION_REQUIRED"
+        case .itemChanged: return "ITEM_CHANGED"
         case .storageLimit: return "STORAGE_LIMIT"
         case .unsupportedSchema: return "UNSUPPORTED_SCHEMA"
         case .corruptStorePreserved: return "CORRUPT_STORE_PRESERVED"

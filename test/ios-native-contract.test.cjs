@@ -144,6 +144,10 @@ test("native mobile data is protected, atomic, bounded, recoverable, and registe
   assert.match(plugin, /confirmationInProgress/);
   assert.match(plugin, /presentedViewController == nil/);
   assert.match(plugin, /CONFIRMATION_IN_PROGRESS/);
+  assert.match(plugin, /deleteNote\(ifUnchanged: item\)/);
+  assert.match(plugin, /deleteRecord\(ifUnchanged: item\)/);
+  assert.match(plugin, /deleteArtifact\(ifUnchanged: item\)/);
+  assert.match(core, /case itemChanged/);
   assert.match(plugin, /alert\.dismiss\([\s\S]*?confirmationInProgress = false[\s\S]*?call\.resolve/);
   assert.match(plugin, /\{ \[weak alert\] confirmed in/);
   assert.match(plugin, /CAPPluginMethod\(name: "createRecord"/);

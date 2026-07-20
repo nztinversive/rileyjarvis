@@ -91,7 +91,7 @@ export type VoiceSessionCapability = {
 export type MobileDataCapability = {
   list: () => Promise<import("../mobile/data").VectorMobileStore>;
   subscribe: (callback: (store: import("../mobile/data").VectorMobileStore) => void) => () => void;
-  confirmDeletion: (input: { kind: "note" | "record" | "saved artifact"; summary: string }) => Promise<boolean>;
+  confirmDeletion: (input: { kind: "note" | "record" | "saved artifact"; id: string }) => Promise<import("../mobile/data").VectorMobileStore | null>;
   createNote: (input: { text: string; tags?: string[] }) => Promise<{
     store: import("../mobile/data").VectorMobileStore;
     itemId: string;

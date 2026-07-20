@@ -309,7 +309,15 @@ test("the iOS adapter selects typed mobile data and share capabilities with boun
   const now = "2026-07-20T12:00:00Z";
   const mobileData = {
     async list() { return structuredClone(store); },
-    async confirmDeletion(input) { confirmationRequests.push(input); return { confirmed: nativeConfirmation }; },
+    async confirmDeletion(input) {
+      confirmationRequests.push(input);
+      if (!nativeConfirmation) return { confirmed: false };
+      deletes += 1;
+      if (input.kind === "note") store.notes = store.notes.filter((item) => item.id !== input.id);
+      if (input.kind === "record") store.records = store.records.filter((item) => item.id !== input.id);
+      if (input.kind === "saved artifact") store.artifacts = store.artifacts.filter((item) => item.id !== input.id);
+      return { confirmed: true, store: structuredClone(store) };
+    },
     async createNote(input) {
       store.notes.push(
         { id: "note-rival", text: "Concurrent note", tags: [], createdAt: now, updatedAt: now },
@@ -368,8 +376,8 @@ test("the iOS adapter selects typed mobile data and share capabilities with boun
   assert.equal((await platform.executeTool({ name: "note_delete", arguments: { id: "note-0001", confirmed: true } })).ok, true);
   assert.equal(deletes, 1);
   assert.deepEqual(confirmationRequests, [
-    { kind: "note", summary: "Remember" },
-    { kind: "note", summary: "Remember" },
+    { kind: "note", id: "note-0001" },
+    { kind: "note", id: "note-0001" },
   ]);
   assert.deepEqual(await platform.nativeShare.share({ title: "Plan", text: "# Plan" }), { completed: false });
   assert.deepEqual(shared, [{ title: "Plan", text: "# Plan" }]);

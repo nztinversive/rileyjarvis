@@ -40,7 +40,7 @@ export type IOSVectorPlatformDependencies = {
   voiceSession?: VoiceSessionCapability;
   mobileData?: {
     list: () => Promise<unknown>;
-    confirmDeletion: (input: { kind: string; summary: string }) => Promise<{ confirmed?: unknown }>;
+    confirmDeletion: (input: { kind: string; id: string }) => Promise<unknown>;
     createNote: (input: { text: string; tags?: string[] }) => Promise<unknown>;
     updateNote: (input: { id: string; text?: string; tags?: string[] }) => Promise<unknown>;
     deleteNote: (input: { id: string }) => Promise<unknown>;
@@ -121,12 +121,16 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
           mobileDataListeners.add(callback);
           return () => mobileDataListeners.delete(callback);
         },
-        confirmDeletion: async (input: { kind: "note" | "record" | "saved artifact"; summary: string }) => {
-          const result = await dependencies.mobileData!.confirmDeletion({
-            kind: input.kind,
-            summary: requiredString(input.summary, 240),
-          });
-          return result?.confirmed === true;
+        confirmDeletion: async (input: { kind: "note" | "record" | "saved artifact"; id: string }) => {
+          const result = await dependencies.mobileData!.confirmDeletion({ kind: input.kind, id: validateMobileItemId(input.id) });
+          if (!result || typeof result !== "object" || Array.isArray(result)) {
+            throw new SafeIOSPlatformError("Deletion confirmation returned malformed data.");
+          }
+          const response = result as Record<string, unknown>;
+          if (response.confirmed !== true) return null;
+          const store = validateMobileStore(response.store);
+          notifyMobileDataListeners(store);
+          return store;
         },
         createNote: async (input: { text: string; tags?: string[] }) =>
           validatedCreatedMutation(dependencies.mobileData!.createNote(validateNoteCreateInput(input))),
@@ -365,10 +369,8 @@ async function executeIOSTool(
     if (toolCall.name === "note_delete") {
       if (toolCall.arguments.confirmed !== true) return confirmationRequired("note");
       const id = requiredString(toolCall.arguments.id, 80);
-      const note = (await mobileData!.list()).notes.find((item) => item.id === id);
-      if (!note) throw new Error("The selected note was not found.");
-      if (!await mobileData!.confirmDeletion({ kind: "note", summary: excerpt(note.text, 180) })) return deletionCancelled("note");
-      const store = await mobileData!.deleteNote(id);
+      const store = await mobileData!.confirmDeletion({ kind: "note", id });
+      if (!store) return deletionCancelled("note");
       return { ok: true, deleted: true, artifact: notesArtifact(store.notes) };
     }
     if (toolCall.name === "records_create") {
@@ -402,10 +404,8 @@ async function executeIOSTool(
     if (toolCall.name === "records_delete") {
       if (toolCall.arguments.confirmed !== true) return confirmationRequired("record");
       const id = requiredString(toolCall.arguments.id, 80);
-      const record = (await mobileData!.list()).records.find((item) => item.id === id);
-      if (!record) throw new Error("The selected record was not found.");
-      if (!await mobileData!.confirmDeletion({ kind: "record", summary: `${record.collection}: ${record.title}` })) return deletionCancelled("record");
-      const store = await mobileData!.deleteRecord(id);
+      const store = await mobileData!.confirmDeletion({ kind: "record", id });
+      if (!store) return deletionCancelled("record");
       return { ok: true, deleted: true, artifact: recordsArtifact(store.records.slice(0, 20), "Records") };
     }
     if (toolCall.name === "artifact_save") {
@@ -423,10 +423,8 @@ async function executeIOSTool(
     if (toolCall.name === "artifact_unsave") {
       if (toolCall.arguments.confirmed !== true) return confirmationRequired("saved artifact");
       const id = requiredString(toolCall.arguments.id, 80);
-      const savedArtifact = (await mobileData!.list()).artifacts.find((item) => item.id === id);
-      if (!savedArtifact) throw new Error("The selected saved artifact was not found.");
-      if (!await mobileData!.confirmDeletion({ kind: "saved artifact", summary: savedArtifact.title })) return deletionCancelled("saved artifact");
-      const store = await mobileData!.deleteArtifact(id);
+      const store = await mobileData!.confirmDeletion({ kind: "saved artifact", id });
+      if (!store) return deletionCancelled("saved artifact");
       return { ok: true, deleted: true, artifact: savedArtifactsArtifact(store.artifacts) };
     }
   } catch (error) {
