@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   webDir: "dist",
   ios: {
     allowsLinkPreview: false,
+    contentInset: "automatic",
     preferredContentMode: "mobile",
   },
   server: {

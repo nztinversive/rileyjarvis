@@ -45,6 +45,7 @@ test("the iOS project declares microphone purpose, secure defaults, and no backg
   assert.match(project, /IPHONEOS_DEPLOYMENT_TARGET = 15\.0;/);
   assert.match(config, /appName: "Vector"/);
   assert.match(config, /webDir: "dist"/);
+  assert.match(config, /contentInset: "automatic"/);
   assert.match(config, /iosScheme: "capacitor"/);
   assert.doesNotMatch(config, /allowNavigation|cleartext:\s*true/);
   assert.match(vite, /target: "safari15"/);
