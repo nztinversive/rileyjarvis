@@ -251,8 +251,9 @@ function TalkScreen({
   }
 
   function handleInputFocus(event: React.FocusEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
     window.setTimeout(() => {
-      event.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
+      input.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 250);
   }
 

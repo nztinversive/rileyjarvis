@@ -125,6 +125,8 @@ test("mobile markup and responsive styles preserve accessibility and iPhone layo
   assert.match(mobile, /aria-live="polite"/);
   assert.match(mobile, /aria-label=\{`\$\{control\.label\}\. \$\{control\.detail\}`\}/);
   assert.match(mobile, /headingRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(mobile, /const input = event\.currentTarget[\s\S]*?input\.scrollIntoView/);
+  assert.doesNotMatch(mobile, /setTimeout\(\(\) => \{[\s\S]*?event\.currentTarget\.scrollIntoView/);
   assert.match(mobile, /disabled=\{connectionState !== "connected" \|\| !textPrompt\.trim\(\)\}/);
   assert.match(styles, /env\(safe-area-inset-top\)/);
   assert.match(styles, /env\(safe-area-inset-bottom\)/);
