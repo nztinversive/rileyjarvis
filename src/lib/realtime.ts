@@ -182,15 +182,22 @@ export class VectorRealtimeClient {
       });
     } catch (error) {
       if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
+      this.connectionAttempt += 1;
+      this.closeRealtimeResources();
       this.callbacks.onConnectionState("error");
       this.callbacks.onMood("error");
       this.callbacks.onStatus(error instanceof Error ? error.message : String(error));
-      this.disconnect();
     }
   }
 
   disconnect(): void {
     this.connectionAttempt += 1;
+    this.closeRealtimeResources();
+    this.callbacks.onConnectionState("idle");
+    this.callbacks.onMood("idle");
+  }
+
+  private closeRealtimeResources(): void {
     this.dc?.close();
     this.pc?.close();
     this.micStream?.getTracks().forEach((track) => track.stop());
@@ -201,8 +208,6 @@ export class VectorRealtimeClient {
     this.remoteCodexAvailable = false;
     this.responseInProgress = false;
     this.currentAssistantText = "";
-    this.callbacks.onConnectionState("idle");
-    this.callbacks.onMood("idle");
     this.callbacks.onMouthShape(silentMouthShape());
   }
 

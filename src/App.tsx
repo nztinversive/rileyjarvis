@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BrainCircuit, Expand, History, Keyboard, Mic, MicOff, MonitorCog, Moon, PanelRight, Send, Sun, Zap } from "lucide-react";
 import { ArtifactPanel } from "./components/ArtifactPanel";
+import { MobileAppShell } from "./components/MobileAppShell";
 import { VectorOrb } from "./components/VectorOrb";
 import { newEntry, VectorRealtimeClient, type MouthShape, type TranscriptEntry, type VectorConnectionState, type VectorMood } from "./lib/realtime";
 import { getVectorPlatform, type RemoteCodexLifecycleEvent, type VectorArtifact } from "./platform";
@@ -25,6 +26,7 @@ function initialTheme(): VectorTheme {
 
 export default function App() {
   const platformAvailable = Boolean(vectorPlatform);
+  const isNativeMobile = vectorPlatform?.presentation === "native-mobile";
   const [connectionState, setConnectionState] = useState<VectorConnectionState>("idle");
   const [mood, setMood] = useState<VectorMood>("idle");
   const [mode, setMode] = useState<VectorMode>("display");
@@ -63,6 +65,13 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.presentation = isNativeMobile ? "native-mobile" : "desktop";
+    return () => {
+      delete document.documentElement.dataset.presentation;
+    };
+  }, [isNativeMobile]);
 
   useEffect(() => {
     if (!vectorPlatform?.appLifecycle) return;
@@ -163,6 +172,10 @@ export default function App() {
         if (nextArtifact.fullscreen) setArtifactFullscreen(true);
       },
       onMode: (nextMode) => {
+        if (isNativeMobile && nextMode === "computer") {
+          setStatus("Computer-use mode is not available on iOS.");
+          return;
+        }
         setMode(nextMode);
         if (nextMode === "computer") {
           setArtifactVisible(false);
@@ -226,6 +239,29 @@ export default function App() {
     clientRef.current?.sendText(trimmed);
     setTextPrompt("");
     setShowTypeInput(false);
+  }
+
+  if (isNativeMobile) {
+    return (
+      <MobileAppShell
+        artifact={artifact}
+        connectionState={connectionState}
+        mood={mood}
+        mouthShape={mouthShape}
+        status={status}
+        textPrompt={textPrompt}
+        theme={theme}
+        transcript={transcript}
+        showTypeInput={showTypeInput}
+        onConnect={() => void connect()}
+        onDisconnect={disconnect}
+        onOpenExternalUrl={vectorPlatform?.openExternalUrl}
+        onSendTextPrompt={sendTextPrompt}
+        onTextPromptChange={setTextPrompt}
+        onToggleTheme={toggleTheme}
+        onToggleTypeInput={() => setShowTypeInput((value) => !value)}
+      />
+    );
   }
 
   if (mode === "computer") {

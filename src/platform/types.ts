@@ -71,7 +71,10 @@ export type AppLifecycleCapability = {
   subscribe: (callback: (isActive: boolean) => void) => () => void;
 };
 
+export type VectorPresentation = "desktop" | "native-mobile";
+
 export type VectorPlatform = {
+  presentation: VectorPresentation;
   createRealtimeCredential: () => Promise<RealtimeCredential>;
   executeTool: (toolCall: VectorToolCall) => Promise<VectorToolResult>;
   listToolSpecs: () => Promise<VectorToolSpec[]>;

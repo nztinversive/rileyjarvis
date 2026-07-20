@@ -7,6 +7,7 @@ type ArtifactPanelProps = {
   artifact: VectorArtifact | null;
   visible: boolean;
   fullscreen: boolean;
+  presentation?: "desktop" | "mobile";
   onToggleVisible: () => void;
   onToggleFullscreen: () => void;
   onOpenExternalUrl?: (url: string) => Promise<void>;
@@ -84,7 +85,15 @@ mermaid.initialize({
   securityLevel: "strict",
 });
 
-export function ArtifactPanel({ artifact, visible, fullscreen, onToggleVisible, onToggleFullscreen, onOpenExternalUrl }: ArtifactPanelProps) {
+export function ArtifactPanel({
+  artifact,
+  visible,
+  fullscreen,
+  presentation = "desktop",
+  onToggleVisible,
+  onToggleFullscreen,
+  onOpenExternalUrl,
+}: ArtifactPanelProps) {
   const [mermaidState, setMermaidState] = useState<MermaidState>({ svg: "", error: null, source: "" });
   const rawId = useId();
   const mermaidId = useMemo(() => `mermaid-${rawId.replace(/[^a-zA-Z0-9_-]/g, "")}`, [rawId]);
@@ -129,17 +138,24 @@ export function ArtifactPanel({ artifact, visible, fullscreen, onToggleVisible, 
   }
 
   return (
-    <aside className={`artifact-panel ${fullscreen ? "artifact-fullscreen" : ""}`}>
+    <aside
+      className={`artifact-panel ${presentation === "mobile" ? "artifact-panel-mobile" : ""} ${fullscreen ? "artifact-fullscreen" : ""}`}
+      aria-label="Artifacts"
+    >
       <header className="artifact-header">
         <div>
           <span className="eyebrow">Artifacts</span>
           <h2>{artifact?.title || "Ready"}</h2>
-          <small className="artifact-serial">VCT-01 // LOCAL OPERATOR // 127.0.0.1</small>
+          <small className="artifact-serial">
+            {presentation === "mobile" ? "Secure iOS presentation" : "VCT-01 // LOCAL OPERATOR // 127.0.0.1"}
+          </small>
         </div>
-        <div className="artifact-actions">
-          <button onClick={onToggleFullscreen}>{fullscreen ? "Window" : "Fullscreen"}</button>
-          <button onClick={onToggleVisible}>Hide</button>
-        </div>
+        {presentation === "desktop" ? (
+          <div className="artifact-actions">
+            <button onClick={onToggleFullscreen}>{fullscreen ? "Window" : "Fullscreen"}</button>
+            <button onClick={onToggleVisible}>Hide</button>
+          </div>
+        ) : null}
       </header>
       <div className="artifact-body">
         {artifact ? (

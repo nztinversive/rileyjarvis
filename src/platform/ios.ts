@@ -47,6 +47,7 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
   const timeoutMs = normalizeTimeout(dependencies.timeoutMs);
 
   return {
+    presentation: "native-mobile",
     createRealtimeCredential: () =>
       requestRealtimeCredential({
         backendBaseUrl: dependencies.backendBaseUrl,
