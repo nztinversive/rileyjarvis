@@ -1,18 +1,30 @@
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
-import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { createIOSVectorPlatform, type IOSSecureStorageBridge } from "./ios";
-import type { AppLifecycleCapability, VectorPlatform } from "./types";
+import type {
+  AppLifecycleCapability,
+  VectorPlatform,
+  VoiceSessionCapability,
+  VoiceSessionEvent,
+} from "./types";
 
 const secureStorage = registerPlugin<IOSSecureStorageBridge>("VectorSecureStorage");
-
-export async function setIOSBootstrapCredential(value: string): Promise<void> {
-  await secureStorage.set({ value });
-}
 
 export async function deleteIOSBootstrapCredential(): Promise<void> {
   await secureStorage.delete();
 }
+
+type IOSAudioSessionBridge = {
+  prepare: () => Promise<{ route: string }>;
+  deactivate: () => Promise<void>;
+  addListener: (
+    eventName: "stateChanged",
+    listener: (event: VoiceSessionEvent) => void,
+  ) => Promise<PluginListenerHandle>;
+};
+
+const audioSession = registerPlugin<IOSAudioSessionBridge>("VectorAudioSession");
 
 export function getCapacitorIOSVectorPlatform(): VectorPlatform | null {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return null;
@@ -29,10 +41,22 @@ export function getCapacitorIOSVectorPlatform(): VectorPlatform | null {
     },
   };
 
+  const voiceSession: VoiceSessionCapability = {
+    prepare: () => audioSession.prepare(),
+    deactivate: () => audioSession.deactivate(),
+    subscribe(callback) {
+      const handle = audioSession.addListener("stateChanged", callback);
+      return () => {
+        void handle.then((listener) => listener.remove());
+      };
+    },
+  };
+
   return createIOSVectorPlatform({
     backendBaseUrl: import.meta.env.VITE_VECTOR_BACKEND_URL ?? "",
     secureStorage,
     appLifecycle,
+    voiceSession,
     openExternalUrl: async (url) => {
       await Browser.open({ url, presentationStyle: "popover" });
     },

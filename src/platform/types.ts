@@ -71,14 +71,32 @@ export type AppLifecycleCapability = {
   subscribe: (callback: (isActive: boolean) => void) => () => void;
 };
 
+export type VoiceSessionEvent = {
+  type:
+    | "interruption"
+    | "route-changed"
+    | "route-unavailable"
+    | "media-services-reset"
+    | "protected-data-unavailable";
+  route?: string;
+  shouldDisconnect: boolean;
+};
+
+export type VoiceSessionCapability = {
+  prepare: () => Promise<{ route: string }>;
+  deactivate: () => Promise<void>;
+  subscribe: (callback: (event: VoiceSessionEvent) => void) => () => void;
+};
+
 export type VectorPresentation = "desktop" | "native-mobile";
 
 export type VectorPlatform = {
   presentation: VectorPresentation;
-  createRealtimeCredential: () => Promise<RealtimeCredential>;
+  createRealtimeCredential: (options?: { signal?: AbortSignal }) => Promise<RealtimeCredential>;
   executeTool: (toolCall: VectorToolCall) => Promise<VectorToolResult>;
   listToolSpecs: () => Promise<VectorToolSpec[]>;
   appLifecycle?: AppLifecycleCapability;
   openExternalUrl?: (url: string) => Promise<void>;
   remoteCodex?: RemoteCodexCapability;
+  voiceSession?: VoiceSessionCapability;
 };

@@ -69,9 +69,51 @@ export type PreparedRealtimeSession = {
   remoteCodexAvailable: boolean;
 };
 
-export async function prepareRealtimeSession(platform: VectorPlatform): Promise<PreparedRealtimeSession> {
+export type RealtimeConnectionErrorCode =
+  | "audio_session"
+  | "microphone_denied"
+  | "microphone_missing"
+  | "microphone_unavailable"
+  | "credential"
+  | "credential_expired"
+  | "sdp_rejected"
+  | "sdp_timeout"
+  | "sdp_transport"
+  | "peer_connection"
+  | "network_offline";
+
+export class RealtimeConnectionError extends Error {
+  readonly code: RealtimeConnectionErrorCode;
+
+  constructor(code: RealtimeConnectionErrorCode, message: string) {
+    super(message);
+    this.name = "RealtimeConnectionError";
+    this.code = code;
+  }
+}
+
+export type RealtimeClientDependencies = {
+  createPeerConnection?: () => RTCPeerConnection;
+  getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+  fetchImpl?: typeof fetch;
+  createAudioElement?: () => HTMLAudioElement;
+  createAudioContext?: () => AudioContext;
+  createMediaStream?: (tracks: MediaStreamTrack[]) => MediaStream;
+  requestAnimationFrame?: (callback: FrameRequestCallback) => number;
+  cancelAnimationFrame?: (handle: number) => void;
+  onlineEvents?: Pick<EventTarget, "addEventListener" | "removeEventListener">;
+  isOnline?: () => boolean;
+  now?: () => number;
+  sdpTimeoutMs?: number;
+  connectionTimeoutMs?: number;
+};
+
+export async function prepareRealtimeSession(
+  platform: VectorPlatform,
+  options?: { signal?: AbortSignal },
+): Promise<PreparedRealtimeSession> {
   const toolSpecs = await platform.listToolSpecs();
-  const credential = await platform.createRealtimeCredential();
+  const credential = await platform.createRealtimeCredential(options);
   return {
     credential,
     toolSpecs,
@@ -100,119 +142,510 @@ export class VectorRealtimeClient {
   private outputMeterFrame = 0;
   private smoothedMouthShape: MouthShape = silentMouthShape();
   private connectionAttempt = 0;
+  private connectionState: VectorConnectionState = "idle";
+  private setupAbortController: AbortController | null = null;
+  private sdpAbortController: AbortController | null = null;
+  private connectionDeadline: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private remoteAudio: HTMLAudioElement | null = null;
+  private listenerCleanups: Array<() => void> = [];
+  private closingResources = false;
+  private voiceSessionPrepared = false;
+  private dependencies: RealtimeClientDependencies;
 
-  constructor(platform: VectorPlatform, callbacks: RealtimeCallbacks) {
+  constructor(platform: VectorPlatform, callbacks: RealtimeCallbacks, dependencies: RealtimeClientDependencies = {}) {
     this.platform = platform;
     this.callbacks = callbacks;
+    this.dependencies = dependencies;
   }
 
   async connect(): Promise<void> {
-    if (this.pc) return;
+    if (this.connectionState === "connecting") {
+      this.callbacks.onStatus("A Realtime connection attempt is already in progress.");
+      return;
+    }
+    if (this.connectionState === "connected" || this.pc) {
+      this.callbacks.onStatus("Vector is already connected.");
+      return;
+    }
+
     const connectionAttempt = ++this.connectionAttempt;
-    this.callbacks.onConnectionState("connecting");
+    const setupController = new AbortController();
+    this.setupAbortController = setupController;
+    let credentialToClear: RealtimeCredential | null = null;
+    this.setConnectionState("connecting");
     this.callbacks.onMood("thinking");
-    this.callbacks.onStatus("Minting a Realtime client secret.");
+    this.callbacks.onStatus("Preparing microphone access.");
 
     try {
-      const session = await prepareRealtimeSession(this.platform);
+      await this.prepareNativeAudioSession(connectionAttempt);
       if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
-      this.toolSpecs = session.toolSpecs;
-      this.remoteCodexAvailable = session.remoteCodexAvailable;
-      const pc = new RTCPeerConnection();
-      this.pc = pc;
-      const audio = document.createElement("audio");
-      audio.autoplay = true;
 
-      pc.ontrack = (event) => {
+      // Preserve Electron's existing credential-first behavior. Native iOS
+      // acquires microphone permission before minting so the short-lived
+      // credential is not consumed while system permission UI is open.
+      let session: PreparedRealtimeSession | null = null;
+      if (this.platform.presentation === "desktop" || !this.canAcquireMicrophone()) {
+        this.callbacks.onStatus("Creating a secure Realtime session.");
+        session = await this.prepareSession(setupController.signal);
+        credentialToClear = session.credential;
         if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
-        audio.srcObject = event.streams[0];
-        this.startOutputMeter(event.streams[0]);
-      };
+      }
 
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const micStream = await this.acquireMicrophone();
       if (!this.isCurrentConnectionAttempt(connectionAttempt)) {
-        micStream.getTracks().forEach((track) => track.stop());
+        stopStream(micStream);
         return;
       }
+      const micTrack = micStream.getAudioTracks()[0];
+      if (!micTrack || micTrack.readyState === "ended") {
+        stopStream(micStream);
+        throw new RealtimeConnectionError(
+          "microphone_missing",
+          "No microphone input is available. Check the current audio route and try again.",
+        );
+      }
       this.micStream = micStream;
-      pc.addTrack(micStream.getAudioTracks()[0], micStream);
+
+      this.callbacks.onStatus("Creating a secure Realtime session.");
+      session ??= await this.prepareSession(setupController.signal);
+      credentialToClear = session.credential;
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
+      if (this.setupAbortController === setupController) this.setupAbortController = null;
+      this.toolSpecs = session.toolSpecs;
+      this.remoteCodexAvailable = session.remoteCodexAvailable;
+      if (isCredentialExpired(session.credential, this.now())) {
+        clearCredential(session.credential);
+        throw new RealtimeConnectionError(
+          "credential_expired",
+          "The Realtime session credential expired before use. Try connecting again.",
+        );
+      }
+
+      const pc = this.createPeerConnection();
+      this.pc = pc;
+      const audio = this.createRemoteAudioElement();
+      this.remoteAudio = audio;
+      audio.autoplay = true;
+      audio.setAttribute("playsinline", "");
+      audio.setAttribute("aria-hidden", "true");
+      audio.setAttribute("data-vector-realtime-output", "");
+      audio.style.display = "none";
+      if (typeof document !== "undefined") document.body?.append(audio);
+
+      this.addListener(pc, "track", (rawEvent) => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
+        const event = rawEvent as RTCTrackEvent;
+        const stream = event.streams[0] ?? this.createMediaStream([event.track]);
+        audio.srcObject = stream;
+        void audio.play().catch(() => {
+          if (this.isCurrentConnectionAttempt(connectionAttempt)) {
+            this.failActiveConnection(
+              connectionAttempt,
+              new RealtimeConnectionError(
+                "peer_connection",
+                "Remote audio could not start. Check the current output route before reconnecting.",
+              ),
+            );
+          }
+        });
+        try {
+          this.startOutputMeter(stream);
+        } catch {
+          this.stopOutputMeter();
+          this.callbacks.onMouthShape(silentMouthShape());
+        }
+      });
+      this.addListener(pc, "connectionstatechange", () => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          this.failActiveConnection(
+            connectionAttempt,
+            new RealtimeConnectionError(
+              "peer_connection",
+              "The Realtime connection was lost. Disconnect and start a new conversation.",
+            ),
+          );
+        }
+      });
+      this.addListener(pc, "iceconnectionstatechange", () => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
+        if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+          this.failActiveConnection(
+            connectionAttempt,
+            new RealtimeConnectionError(
+              "peer_connection",
+              "The Realtime connection was lost. Disconnect and start a new conversation.",
+            ),
+          );
+        }
+      });
+
+      pc.addTrack(micTrack, micStream);
+      this.addListener(micTrack, "ended", () => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
+        this.failActiveConnection(
+          connectionAttempt,
+          new RealtimeConnectionError(
+            "microphone_unavailable",
+            "Microphone input stopped. Check the current audio route before reconnecting.",
+          ),
+        );
+      });
 
       const dc = pc.createDataChannel("oai-events");
       this.dc = dc;
-      dc.addEventListener("open", () => {
+      this.addListener(dc, "open", () => {
         if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
-        this.callbacks.onConnectionState("connected");
+        this.clearConnectionDeadline();
+        this.setConnectionState("connected");
         this.callbacks.onMood("idle");
         this.callbacks.onStatus(realtimeConnectedStatus(this.remoteCodexAvailable));
         this.flushRemoteCodexAnnouncements();
       });
-      dc.addEventListener("message", (event) => {
+      this.addListener(dc, "message", (rawEvent) => {
+        const event = rawEvent as MessageEvent;
+        if (!this.isCurrentConnectionAttempt(connectionAttempt) || typeof event.data !== "string") return;
         void this.handleServerEvent(event.data);
       });
+      this.addListener(dc, "close", () => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
+        this.failActiveConnection(
+          connectionAttempt,
+          new RealtimeConnectionError(
+            "peer_connection",
+            "The Realtime connection closed unexpectedly. Start a new conversation to reconnect.",
+          ),
+        );
+      });
+      this.addListener(dc, "error", () => {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
+        this.failActiveConnection(
+          connectionAttempt,
+          new RealtimeConnectionError(
+            "peer_connection",
+            "The Realtime data channel failed. Start a new conversation to reconnect.",
+          ),
+        );
+      });
+      const onlineEvents = this.onlineEvents();
+      if (onlineEvents) {
+        this.addListener(onlineEvents, "offline", () => {
+          if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.closingResources) return;
+          this.failActiveConnection(
+            connectionAttempt,
+            new RealtimeConnectionError(
+              "network_offline",
+              "The network connection is offline. Reconnect after network access returns.",
+            ),
+          );
+        });
+      }
 
       const offer = await pc.createOffer();
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
       await pc.setLocalDescription(offer);
       if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
 
-      const sdpResponse = await fetch(realtimeUrl, {
-        method: "POST",
-        body: offer.sdp,
-        headers: {
-          Authorization: `Bearer ${session.credential.value}`,
-          "Content-Type": "application/sdp",
-        },
-      });
-      if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
-
-      if (!sdpResponse.ok) {
-        throw new Error(`Realtime WebRTC call failed: ${sdpResponse.status} ${await sdpResponse.text()}`);
+      let credentialValue = session.credential.value;
+      clearCredential(session.credential);
+      credentialToClear = null;
+      const controller = new AbortController();
+      this.sdpAbortController = controller;
+      const timeout = globalThis.setTimeout(() => controller.abort(), this.sdpTimeoutMs());
+      let sdpResponse: Response;
+      try {
+        sdpResponse = await this.fetchImpl()(realtimeUrl, {
+          method: "POST",
+          body: offer.sdp,
+          headers: {
+            Authorization: `Bearer ${credentialValue}`,
+            "Content-Type": "application/sdp",
+          },
+          signal: controller.signal,
+        });
+      } catch {
+        globalThis.clearTimeout(timeout);
+        if (this.sdpAbortController === controller) this.sdpAbortController = null;
+        if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
+        throw controller.signal.aborted
+          ? new RealtimeConnectionError("sdp_timeout", "The Realtime connection timed out. Try again.")
+          : new RealtimeConnectionError("sdp_transport", "Unable to reach the Realtime service. Check the network and try again.");
+      } finally {
+        credentialValue = "";
+      }
+      if (!this.isCurrentConnectionAttempt(connectionAttempt)) {
+        globalThis.clearTimeout(timeout);
+        if (this.sdpAbortController === controller) this.sdpAbortController = null;
+        return;
       }
 
-      const answer = await sdpResponse.text();
+      if (!sdpResponse.ok) {
+        globalThis.clearTimeout(timeout);
+        if (this.sdpAbortController === controller) this.sdpAbortController = null;
+        throw new RealtimeConnectionError(
+          "sdp_rejected",
+          `The Realtime service rejected the connection (HTTP ${safeHttpStatus(sdpResponse.status)}). Try again.`,
+        );
+      }
+
+      let answer: string;
+      try {
+        answer = await readBoundedSdpResponse(sdpResponse);
+      } catch (error) {
+        if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
+        if (error instanceof RealtimeConnectionError) throw error;
+        throw controller.signal.aborted
+          ? new RealtimeConnectionError("sdp_timeout", "The Realtime connection timed out. Try again.")
+          : new RealtimeConnectionError("sdp_transport", "Unable to read the Realtime connection response. Try again.");
+      } finally {
+        globalThis.clearTimeout(timeout);
+        if (this.sdpAbortController === controller) this.sdpAbortController = null;
+      }
       if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
-      await pc.setRemoteDescription({
-        type: "answer",
-        sdp: answer,
-      });
+      if (controller.signal.aborted) {
+        throw new RealtimeConnectionError("sdp_timeout", "The Realtime connection timed out. Try again.");
+      }
+      if (answer.length === 0) {
+        throw new RealtimeConnectionError(
+          "peer_connection",
+          "The Realtime service returned an unusable connection response. Try again.",
+        );
+      }
+      try {
+        await pc.setRemoteDescription({
+          type: "answer",
+          sdp: answer,
+        });
+      } catch {
+        throw new RealtimeConnectionError(
+          "peer_connection",
+          "The Realtime service returned an unusable connection response. Try again.",
+        );
+      }
+      if (this.isCurrentConnectionAttempt(connectionAttempt) && !this.isConnected()) {
+        this.connectionDeadline = globalThis.setTimeout(() => {
+          if (!this.isCurrentConnectionAttempt(connectionAttempt) || this.isConnected()) return;
+          this.failActiveConnection(
+            connectionAttempt,
+            new RealtimeConnectionError(
+              "peer_connection",
+              "The Realtime connection did not become ready in time. Check the network and try again.",
+            ),
+          );
+        }, this.connectionTimeoutMs());
+      }
     } catch (error) {
       if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
       this.connectionAttempt += 1;
       this.closeRealtimeResources();
-      this.callbacks.onConnectionState("error");
+      this.setConnectionState("error");
       this.callbacks.onMood("error");
-      this.callbacks.onStatus(error instanceof Error ? error.message : String(error));
+      this.callbacks.onStatus(sanitizeConnectionError(error).message);
+    } finally {
+      if (credentialToClear) clearCredential(credentialToClear);
+      if (this.setupAbortController === setupController) this.setupAbortController = null;
     }
   }
 
   disconnect(): void {
     this.connectionAttempt += 1;
     this.closeRealtimeResources();
-    this.callbacks.onConnectionState("idle");
+    this.setConnectionState("idle");
     this.callbacks.onMood("idle");
   }
 
   private closeRealtimeResources(): void {
-    this.dc?.close();
-    this.pc?.close();
-    this.micStream?.getTracks().forEach((track) => track.stop());
-    this.stopOutputMeter();
-    this.dc = null;
-    this.pc = null;
-    this.micStream = null;
-    this.remoteCodexAvailable = false;
-    this.responseInProgress = false;
-    this.currentAssistantText = "";
-    this.callbacks.onMouthShape(silentMouthShape());
+    this.closingResources = true;
+    try {
+      this.setupAbortController?.abort();
+      this.setupAbortController = null;
+      this.sdpAbortController?.abort();
+      this.sdpAbortController = null;
+      this.clearConnectionDeadline();
+      for (const removeListener of this.listenerCleanups.splice(0)) removeListener();
+      this.dc?.close();
+      this.pc?.close();
+      stopStream(this.micStream);
+      this.stopOutputMeter();
+      if (this.remoteAudio) {
+        this.remoteAudio.pause();
+        this.remoteAudio.srcObject = null;
+        this.remoteAudio.removeAttribute("src");
+        this.remoteAudio.load();
+        this.remoteAudio.remove();
+      }
+      this.dc = null;
+      this.pc = null;
+      this.micStream = null;
+      this.remoteAudio = null;
+      this.remoteCodexAvailable = false;
+      this.responseInProgress = false;
+      this.currentAssistantText = "";
+      this.callbacks.onMouthShape(silentMouthShape());
+      if (this.voiceSessionPrepared) {
+        this.voiceSessionPrepared = false;
+        void this.platform.voiceSession?.deactivate().catch(() => undefined);
+      }
+    } finally {
+      this.closingResources = false;
+    }
   }
 
   private isCurrentConnectionAttempt(connectionAttempt: number): boolean {
     return connectionAttempt === this.connectionAttempt;
+  }
+
+  private setConnectionState(state: VectorConnectionState): void {
+    this.connectionState = state;
+    this.callbacks.onConnectionState(state);
+  }
+
+  private isConnected(): boolean {
+    return this.connectionState === "connected";
+  }
+
+  private async prepareNativeAudioSession(connectionAttempt: number): Promise<void> {
+    if (!this.platform.voiceSession) return;
+    try {
+      await this.platform.voiceSession.prepare();
+    } catch (error) {
+      throw sanitizeAudioSessionError(error);
+    }
+    if (!this.isCurrentConnectionAttempt(connectionAttempt)) {
+      void this.platform.voiceSession.deactivate().catch(() => undefined);
+      return;
+    }
+    this.voiceSessionPrepared = true;
+  }
+
+  private async acquireMicrophone(): Promise<MediaStream> {
+    if (!this.isOnline()) {
+      throw new RealtimeConnectionError(
+        "network_offline",
+        "The network connection is offline. Reconnect after network access returns.",
+      );
+    }
+    try {
+      return await this.getUserMedia()({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch (error) {
+      throw sanitizeMicrophoneError(error);
+    }
+  }
+
+  private async prepareSession(signal: AbortSignal): Promise<PreparedRealtimeSession> {
+    try {
+      return await prepareRealtimeSession(this.platform, { signal });
+    } catch (error) {
+      throw sanitizeCredentialError(error);
+    }
+  }
+
+  private failActiveConnection(connectionAttempt: number, error: RealtimeConnectionError): void {
+    if (!this.isCurrentConnectionAttempt(connectionAttempt)) return;
+    this.connectionAttempt += 1;
+    this.closeRealtimeResources();
+    this.setConnectionState("error");
+    this.callbacks.onMood("error");
+    this.callbacks.onStatus(error.message);
+  }
+
+  private addListener(
+    target: Pick<EventTarget, "addEventListener" | "removeEventListener">,
+    type: string,
+    listener: EventListener,
+  ): void {
+    target.addEventListener(type, listener);
+    this.listenerCleanups.push(() => target.removeEventListener(type, listener));
+  }
+
+  private createPeerConnection(): RTCPeerConnection {
+    return this.dependencies.createPeerConnection?.() ?? new RTCPeerConnection();
+  }
+
+  private getUserMedia(): (constraints: MediaStreamConstraints) => Promise<MediaStream> {
+    return (
+      this.dependencies.getUserMedia ??
+      ((constraints) => {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new RealtimeConnectionError(
+            "microphone_missing",
+            "Microphone capture is not supported in this environment.",
+          );
+        }
+        return navigator.mediaDevices.getUserMedia(constraints);
+      })
+    );
+  }
+
+  private canAcquireMicrophone(): boolean {
+    return Boolean(
+      this.dependencies.getUserMedia ||
+        (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia),
+    );
+  }
+
+  private fetchImpl(): typeof fetch {
+    return this.dependencies.fetchImpl ?? fetch;
+  }
+
+  private createRemoteAudioElement(): HTMLAudioElement {
+    return this.dependencies.createAudioElement?.() ?? document.createElement("audio");
+  }
+
+  private createMediaStream(tracks: MediaStreamTrack[]): MediaStream {
+    return this.dependencies.createMediaStream?.(tracks) ?? new MediaStream(tracks);
+  }
+
+  private createAudioContext(): AudioContext {
+    return this.dependencies.createAudioContext?.() ?? new AudioContext();
+  }
+
+  private requestFrame(callback: FrameRequestCallback): number {
+    return this.dependencies.requestAnimationFrame?.(callback) ?? window.requestAnimationFrame(callback);
+  }
+
+  private cancelFrame(handle: number): void {
+    if (this.dependencies.cancelAnimationFrame) {
+      this.dependencies.cancelAnimationFrame(handle);
+    } else {
+      window.cancelAnimationFrame(handle);
+    }
+  }
+
+  private onlineEvents(): Pick<EventTarget, "addEventListener" | "removeEventListener"> | null {
+    if (this.dependencies.onlineEvents) return this.dependencies.onlineEvents;
+    return typeof window === "undefined" ? null : window;
+  }
+
+  private isOnline(): boolean {
+    if (this.dependencies.isOnline) return this.dependencies.isOnline();
+    return typeof navigator === "undefined" || navigator.onLine !== false;
+  }
+
+  private now(): number {
+    return this.dependencies.now?.() ?? Date.now();
+  }
+
+  private sdpTimeoutMs(): number {
+    const configured = this.dependencies.sdpTimeoutMs;
+    return typeof configured === "number" && Number.isFinite(configured) && configured > 0 ? configured : 15_000;
+  }
+
+  private connectionTimeoutMs(): number {
+    const configured = this.dependencies.connectionTimeoutMs;
+    return typeof configured === "number" && Number.isFinite(configured) && configured > 0 ? configured : 15_000;
+  }
+
+  private clearConnectionDeadline(): void {
+    if (!this.connectionDeadline) return;
+    globalThis.clearTimeout(this.connectionDeadline);
+    this.connectionDeadline = null;
   }
 
   sendText(text: string): void {
@@ -244,7 +677,7 @@ export class VectorRealtimeClient {
 
     if (event.type === "error") {
       this.callbacks.onMood("error");
-      this.callbacks.onStatus(event.error?.message || "Realtime API returned an error.");
+      this.callbacks.onStatus("The Realtime session reported an error. Disconnect and start a new conversation.");
       return;
     }
 
@@ -394,7 +827,7 @@ export class VectorRealtimeClient {
   private startOutputMeter(stream: MediaStream): void {
     this.stopOutputMeter();
 
-    const audioContext = new AudioContext();
+    const audioContext = this.createAudioContext();
     const source = audioContext.createMediaStreamSource(stream);
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
@@ -429,20 +862,172 @@ export class VectorRealtimeClient {
 
       this.smoothedMouthShape = smoothMouthShape(this.smoothedMouthShape, target, 0.36);
       this.callbacks.onMouthShape(this.smoothedMouthShape);
-      this.outputMeterFrame = window.requestAnimationFrame(tick);
+      this.outputMeterFrame = this.requestFrame(tick);
     };
     tick();
   }
 
   private stopOutputMeter(): void {
     if (this.outputMeterFrame) {
-      window.cancelAnimationFrame(this.outputMeterFrame);
+      this.cancelFrame(this.outputMeterFrame);
       this.outputMeterFrame = 0;
     }
     void this.audioContext?.close();
     this.audioContext = null;
     this.outputAnalyser = null;
     this.smoothedMouthShape = silentMouthShape();
+  }
+}
+
+const safeCredentialMessages = new Set([
+  "Set VITE_VECTOR_BACKEND_URL to the secure Vector backend origin.",
+  "VITE_VECTOR_BACKEND_URL must be an HTTPS origin without credentials, a path, query, or fragment.",
+  "Secure credential storage is unavailable.",
+  "No bootstrap session credential is stored in Keychain.",
+  "Realtime session request timed out.",
+  "Unable to reach the Realtime session service.",
+  "The Realtime session service rejected the request.",
+  "The Realtime session service returned a malformed credential.",
+  "Unable to create a Realtime session.",
+  "OPENAI_API_KEY is missing in .env.local",
+]);
+
+function sanitizeAudioSessionError(error: unknown): RealtimeConnectionError {
+  const name = errorName(error);
+  const code = errorCode(error);
+  if (
+    name === "NotAllowedError" ||
+    code === "MICROPHONE_DENIED" ||
+    code === "MICROPHONE_RESTRICTED" ||
+    code === "MICROPHONE_PERMISSION_DENIED" ||
+    code === "MICROPHONE_PERMISSION_RESTRICTED" ||
+    code === "permission_denied"
+  ) {
+    return new RealtimeConnectionError(
+      "microphone_denied",
+      "Microphone access is denied or restricted. Allow Vector in Settings > Privacy & Security > Microphone, then try again.",
+    );
+  }
+  return new RealtimeConnectionError(
+    "audio_session",
+    "Unable to prepare the audio session. Check the current input and output route, then try again.",
+  );
+}
+
+function sanitizeMicrophoneError(error: unknown): RealtimeConnectionError {
+  if (error instanceof RealtimeConnectionError) return error;
+  switch (errorName(error)) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return new RealtimeConnectionError(
+        "microphone_denied",
+        "Microphone access is denied or restricted. Allow Vector in Settings > Privacy & Security > Microphone, then try again.",
+      );
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return new RealtimeConnectionError(
+        "microphone_missing",
+        "No microphone input is available. Check the current audio route and try again.",
+      );
+    case "NotReadableError":
+    case "TrackStartError":
+      return new RealtimeConnectionError(
+        "microphone_unavailable",
+        "The microphone is busy or unavailable. End other audio sessions and try again.",
+      );
+    case "AbortError":
+      return new RealtimeConnectionError(
+        "microphone_unavailable",
+        "Microphone startup was interrupted. Check the current audio route and try again.",
+      );
+    default:
+      return new RealtimeConnectionError(
+        "microphone_unavailable",
+        "Unable to start microphone capture. Check microphone permission and the current audio route.",
+      );
+  }
+}
+
+function sanitizeCredentialError(error: unknown): RealtimeConnectionError {
+  const message = error instanceof Error ? error.message : "";
+  if (safeCredentialMessages.has(message)) {
+    return new RealtimeConnectionError("credential", message);
+  }
+  return new RealtimeConnectionError(
+    "credential",
+    "Unable to create a secure Realtime session. Check the backend connection and credential provisioning.",
+  );
+}
+
+function sanitizeConnectionError(error: unknown): RealtimeConnectionError {
+  if (error instanceof RealtimeConnectionError) return error;
+  return new RealtimeConnectionError(
+    "peer_connection",
+    "Unable to establish the Realtime connection. Check microphone access and the network, then try again.",
+  );
+}
+
+function errorName(error: unknown): string {
+  return error && typeof error === "object" && typeof (error as { name?: unknown }).name === "string"
+    ? (error as { name: string }).name
+    : "";
+}
+
+function errorCode(error: unknown): string {
+  return error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : "";
+}
+
+function isCredentialExpired(credential: RealtimeCredential, nowMs: number): boolean {
+  return credential.expiresAt !== null && credential.expiresAt * 1000 <= nowMs + 5_000;
+}
+
+function clearCredential(credential: RealtimeCredential): void {
+  credential.value = "";
+}
+
+function stopStream(stream: MediaStream | null): void {
+  stream?.getTracks().forEach((track) => track.stop());
+}
+
+function safeHttpStatus(status: number): number | "unknown" {
+  return Number.isInteger(status) && status >= 100 && status <= 599 ? status : "unknown";
+}
+
+async function readBoundedSdpResponse(response: Response, maxBytes = 256_000): Promise<string> {
+  if (!response.body) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      throw new RealtimeConnectionError(
+        "peer_connection",
+        "The Realtime service returned an unusable connection response. Try again.",
+      );
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let byteLength = 0;
+  let text = "";
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      byteLength += chunk.value.byteLength;
+      if (byteLength > maxBytes) {
+        await reader.cancel();
+        throw new RealtimeConnectionError(
+          "peer_connection",
+          "The Realtime service returned an unusable connection response. Try again.",
+        );
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    reader.releaseLock();
   }
 }
 

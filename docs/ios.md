@@ -1,138 +1,223 @@
 # Vector iOS development
 
-Phase 4 adds an intentional mobile interface to the Capacitor 8 iOS 15+ shell. It proves the native presentation, navigation, safe-area layout, keyboard behavior, and interaction model in iPhone Simulators. It does not claim that Realtime voice works on a physical iPhone; microphone/WebRTC and audio-route proof remain Phase 5.
+Phase 5 hardens the Capacitor 8 iOS 15+ app for physical-device Realtime voice: explicit microphone permission, native audio-session routing, bounded WebRTC setup, deterministic teardown, interruption and lifecycle handling, typed prompts, and a temporary DEBUG-only Keychain provisioning mechanism.
 
-## Mobile navigation
+## Current proof status
 
-Native iOS presents three bottom tabs:
+As of July 19, 2026, the code-readiness lane has Simulator compile coverage, but no physical-iPhone voice proof exists. The current development machine reports:
 
-- **Talk** centers the assistant, connection state, transcript status, one primary conversation control, and an optional typed-message composer.
-- **Artifacts** gives text and image artifacts their own scrolling screen instead of relying on the desktop split pane. External links still pass through the iOS platform adapter and open only safe HTTPS URLs.
-- **Activity** shows the locally available connection, mood, status, and conversation history.
+- Xcode 26.6 (build 17F113) with iOS Simulator 26.4.1 and 26.5 destinations;
+- no paired physical iPhone visible to Xcode or `devicectl`;
+- no valid local Apple development signing identity or matching profile for `com.rileyjarvis.vector`;
+- no discoverable HTTPS Phase 2 deployment, approved bootstrap token, or configured `VITE_VECTOR_BACKEND_URL`.
 
-The tab bar and header respect the top and bottom safe areas. Primary controls are at least 44 points, and the layout uses the dynamic viewport so the composer remains usable when the software keyboard is visible. Compact portrait phones and modern Dynamic Island phones are supported; landscape is usable but this phase does not claim iPad optimization.
+These are external proof blockers, not successful device evidence. Do not mark Phase 5 complete, make its pull request ready, or merge it until the physical checklist in this document passes on the exact reviewed commit. A signing-disabled Simulator build proves only that native code compiles.
 
-Computer mode and Remote Codex are not available in the iOS navigation or capability boundary. Their existing Electron UI and behavior remain unchanged.
+## Security and session architecture
+
+The iPhone never receives a standard OpenAI API key. The flow is:
+
+1. A user taps **Start conversation**.
+2. Native iOS requests microphone permission and activates a voice audio session.
+3. WebKit creates one microphone stream.
+4. The app reads one approved temporary bootstrap credential from `WhenUnlockedThisDeviceOnly` Keychain storage.
+5. The app sends that bootstrap credential only to the HTTPS Phase 2 backend.
+6. The backend authenticates the subject, applies rate limits and its server-owned Realtime policy, and uses its standard `OPENAI_API_KEY` to mint a short-lived client secret.
+7. The app uses that client secret once to establish the WebRTC SDP connection, then clears its reference.
+
+This follows OpenAI's [Realtime WebRTC guidance](https://developers.openai.com/api/docs/guides/realtime-webrtc): standard keys stay on the developer-controlled server, while the client uses a short-lived secret for WebRTC. The backend continues to own `gpt-realtime-2.1-mini`, instructions, voice, VAD, tools, reasoning, tracing, safety identifier, and TTL. The client sends no session-policy overrides.
+
+Do not put a standard key or bootstrap credential in source, `.env.local`, an Xcode build setting, scheme environment variables, launch arguments, `Info.plist`, the Capacitor config, URLs, localStorage, Preferences, logs, screenshots, or committed files.
 
 ## Requirements
 
-- macOS
-- Node.js 22 or newer
-- Xcode 26.0 or newer with the command-line tools selected
-- An HTTPS deployment of the Phase 2 Realtime session service
-- For a physical device, an Apple development team and a paired iPhone
+- macOS with Node.js 22.12 or newer
+- Xcode 26.0 or newer with its command-line tools selected
+- a paired, trusted physical iPhone visible as an Xcode run destination
+- Developer Mode enabled on iOS 16 or newer
+- an authorized Apple development team, identity, and profile for `com.rileyjarvis.vector`
+- an HTTPS deployment of the Phase 2 service reachable from the phone
+- an approved temporary backend bootstrap credential
+- a server-side standard OpenAI key and policy configuration
 
-Capacitor uses Swift Package Manager for this project. CocoaPods is not required. The app is named `Vector`, uses bundle identifier `com.rileyjarvis.vector`, serves the built Vite app from `dist`, and keeps the default `capacitor://localhost` WKWebView origin.
+The app uses bundle identifier `com.rileyjarvis.vector`, Swift Package Manager, and the default `capacitor://localhost` WKWebView origin. CocoaPods is not required. If the primary bundle identifier cannot be registered, choose and document an additive Debug-only identifier with the authorized team; do not change the Release identifier merely to bypass signing.
 
-## Install and configure
+Apple requires [Developer Mode for locally installed development apps](https://developer.apple.com/news/?id=r1sz7dke). Pair, trust, unlock, and enable Developer Mode before treating a device as available.
 
-Install the exact npm dependency graph:
+## Backend configuration
+
+Deploy `server/` behind HTTPS and configure its secrets only in the deployment environment:
+
+- `OPENAI_API_KEY`
+- `VECTOR_SAFETY_ID_SECRET`
+- `VECTOR_AUTH_TOKENS_JSON`
+- `VECTOR_ALLOWED_ORIGINS`, including the exact `capacitor://localhost` origin
+
+The server must not accept wildcard CORS, client-selected subjects, or client-selected Realtime policy. Confirm the secret-free health endpoint and exact preflight policy before building the device app:
 
 ```bash
-npm ci
+curl -fsS https://your-vector-backend.example/health
+curl -i -X OPTIONS \
+  https://your-vector-backend.example/api/realtime/session \
+  -H 'Origin: capacitor://localhost' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type'
 ```
 
-Create or update the ignored `.env.local` with the non-secret backend origin:
+Do not include a bearer credential in a shell history or diagnostic capture. An authorized operator should verify an authenticated session request through a secret-safe mechanism.
+
+Create the ignored local file `.env.local` with the credential-free origin only:
 
 ```dotenv
 VITE_VECTOR_BACKEND_URL=https://your-vector-backend.example
 ```
 
-The value must be an HTTPS origin without credentials, a path, query, or fragment. The backend must allow the `capacitor://localhost` origin when the request includes an origin. Do not put an OpenAI key or backend bearer credential in this file, the Capacitor config, an Xcode setting, `Info.plist`, or the web bundle.
+The value must be an HTTPS origin without credentials, path, query, or fragment.
 
-## Bootstrap credential boundary
+## DEBUG-only bootstrap provisioning and revocation
 
-`VectorSecureStorage` stores one temporary bootstrap session credential as a generic-password Keychain item with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. It has only `get`, `set`, and `delete` operations and has no Preferences fallback.
+The temporary developer provisioning UI is compiled only when Swift `DEBUG` is defined and is also disabled unless an explicit non-secret launch argument is present. Release builds contain no provisioning UI or Keychain write bridge. The runtime prompt uses a secure text field and writes directly to the device-only Keychain item without passing through JavaScript.
 
-The iOS app intentionally has no account or token-entry UI and does not create or request a real credential. An approved provisioning flow must pass its credential directly to:
+To provision an approved temporary credential:
 
-```ts
-import { setIOSBootstrapCredential } from "./platform/capacitor";
+1. Open `ios/App/App.xcodeproj`.
+2. Choose **Product > Scheme > Edit Scheme > Run > Arguments**.
+3. Add and enable the non-secret launch argument `-VectorEnableCredentialProvisioning`.
+4. Build and run the Debug configuration on the trusted iPhone.
+5. In the one-time **Development Credential** sheet, choose **Provision**.
+6. Paste the approved temporary backend bootstrap credential into the secure field and choose **Store in Keychain**.
+7. Stop the app, disable the launch argument, and relaunch before voice QA.
 
-await setIOSBootstrapCredential(credentialFromApprovedProvisioningFlow);
-```
+To revoke:
 
-Sign out or credential revocation must call:
+1. Remove the token from the backend's approved `VECTOR_AUTH_TOKENS_JSON` map first.
+2. Re-enable `-VectorEnableCredentialProvisioning` for one Debug launch.
+3. Choose **Revoke Credential** in the development sheet.
+4. Stop the app and disable the launch argument again.
 
-```ts
-import { deleteIOSBootstrapCredential } from "./platform/capacitor";
+Local deletion does not revoke a still-valid server token; complete both steps. Relaunch with the argument to reopen the one-time sheet. Never record the credential value in proof notes.
 
-await deleteIOSBootstrapCredential();
-```
+Final customer authentication remains Phase 7 and must replace this temporary bootstrap boundary.
 
-Those functions are exported from `src/platform/capacitor.ts`. Do not log the value, place it in a URL, persist it in JavaScript storage, or add it to source. Until the native boundary has been provisioned, Realtime startup fails closed with a missing-Keychain-credential message. Sign in with Apple replaces this temporary provisioning boundary in Phase 7.
+## Microphone and audio behavior
 
-## Simulator
+`NSMicrophoneUsageDescription` is present. The Start button is the only path that requests capture. The native flow:
 
-Build the web app, sync native dependencies and assets, select a Simulator, and run:
+- requests microphone permission and reports denied or restricted access with Settings guidance;
+- activates `AVAudioSession` as `playAndRecord` with `voiceChat`;
+- prefers the built-in speaker for hands-free voice while permitting Bluetooth HFP and wired routes;
+- exposes only sanitized route classes such as speaker, receiver, wired headset, or Bluetooth;
+- allows WKWebView microphone capture only for the exact main-frame `capacitor://localhost` origin and denies camera, combined capture, subframes, and other origins.
+
+The app creates one microphone track, one peer connection, one data channel, and one remote audio element per attempt. It never enables background audio or persistent recording.
+
+Disconnect stops all input tracks, closes the data and peer channels, aborts pending backend/SDP requests, removes network/media listeners, pauses and removes remote audio, closes the output meter, deactivates the native audio session, and permits a fresh connection attempt.
+
+The app tears down without automatic reconnection when:
+
+- the app enters the background;
+- the device locks and protected data becomes unavailable;
+- an audio interruption begins;
+- an active headset or other output route becomes unavailable;
+- iOS resets media services;
+- the microphone track ends;
+- the peer/data channel fails or closes;
+- the network goes offline.
+
+Foreground, unlock, route restoration, and interruption end never reacquire the microphone automatically. The user must tap Start again, which mints a fresh Realtime session.
+
+## Install, sync, and Simulator compile
+
+Install the exact dependency graph and sync native files:
 
 ```bash
-npm run ios:run
+npm ci
+npm run ios:sync
 ```
 
-For Xcode-driven development:
+Open Xcode:
 
 ```bash
 npm run ios:open
 ```
 
-`ios:open` performs a fresh build and sync before opening `ios/App/App.xcodeproj`. Select an iPhone Simulator and press Run. Without an approved backend and Keychain bootstrap credential, the conversation control must report a clear error; this is expected and must not be treated as microphone or Realtime success.
-
-### Simulator UI QA
-
-Exercise at least one compact and one modern viewport, for example iPhone SE (3rd generation) and iPhone 17 Pro:
-
-```bash
-npm run ios:sync
-xcrun simctl list devices available
-npx cap run ios --target <SIMULATOR_UDID>
-```
-
-For a signing-disabled compile independent of an Xcode signing team:
-
-```bash
-xcodebuild \
-  -project ios/App/App.xcodeproj \
-  -scheme App \
-  -configuration Debug \
-  -sdk iphonesimulator \
-  -destination 'generic/platform=iOS Simulator' \
-  CODE_SIGNING_ALLOWED=NO \
-  build
-```
-
-On each representative device:
-
-1. Open Talk, Artifacts, and Activity and confirm the tab selection and screen heading update.
-2. Confirm the header, assistant, primary control, and tab bar avoid the notch/Dynamic Island, Home indicator, and all horizontal clipping.
-3. Open the typed-message composer, focus the input, type text, and verify the focused control stays visible above the software keyboard.
-4. Trigger the conversation control without provisioning and confirm an explicit error and retry state, not a false connected/listening state.
-5. Rotate to landscape and confirm navigation and controls remain reachable.
-6. Confirm there is no Computer or Remote Codex entry point.
-
-Simulator screenshots and build products are QA evidence only and must not be committed.
-
-## Physical device
-
-Connect and trust the iPhone, then:
-
-```bash
-npm run ios:sync
-npm run ios:open
-```
-
-In Xcode, select the App target, choose the developer team under Signing & Capabilities, select the paired device, and press Run. Provision the temporary bootstrap credential only through the native secure-storage boundary described above. Phase 4 does not enable background audio, subscriptions, remote tool execution, or final account authentication.
-
-Running the shell on a device is not Phase 5 voice proof. Physical-device microphone permission, audio routing, interruption handling, WebRTC behavior, and an end-to-end Realtime call still require Phase 5 validation.
-
-## Verification
-
-The complete native compile check is:
+The complete signing-disabled Simulator compile is:
 
 ```bash
 npm run ios:verify
 ```
 
-It runs the Vite build, Capacitor sync, and a generic iOS Simulator `xcodebuild` with code signing disabled. Generated web assets under `ios/App/App/public`, native build products, DerivedData, `xcuserdata`, and generated Capacitor config files are ignored and must not be committed.
+Without a deployed backend and Keychain bootstrap credential, tapping Start must fail closed with a clear setup message. Simulator UI, compile success, or a launched shell is not physical Realtime voice proof.
 
-The scaffold follows the current [Capacitor 8 iOS requirements](https://capacitorjs.com/docs/ios), [development workflow](https://capacitorjs.com/docs/basics/workflow), and [local iOS plugin registration](https://capacitorjs.com/docs/ios/custom-code).
+## Physical-iPhone build and proof
+
+Before building, confirm the device appears without recording its UDID:
+
+```bash
+xcrun devicectl list devices
+xcodebuild \
+  -project ios/App/App.xcodeproj \
+  -scheme App \
+  -showdestinations
+```
+
+In Xcode, select the App target, choose the authorized team under **Signing & Capabilities**, select the paired iPhone, and run the exact commit under review. Automatic signing may create or refresh the development profile.
+
+Record only the device model, iOS version, app build, exact Git commit, date, and pass/fail outcomes. Do not retain screenshots, UDIDs, profiles, certificates, console archives, tokens, transcripts, or audio.
+
+The same exact commit must pass all of the following:
+
+- [ ] first-run microphone grant begins only after tapping Start
+- [ ] backend session issuance succeeds and the UI reaches connected state
+- [ ] spoken user audio reaches the model
+- [ ] remote model audio is audible on the expected speaker or selected accessory
+- [ ] a sanitized transcript or status transition appears in Talk/Activity
+- [ ] a typed prompt works in the same live session
+- [ ] disconnect immediately stops capture and output
+- [ ] reconnect creates a fresh backend credential and WebRTC session
+- [ ] background/foreground returns disconnected and requires a user tap
+- [ ] lock/unlock returns disconnected and requires a user tap
+- [ ] one interruption or network-loss path fails safely and reconnects only after a user tap
+- [ ] wired-headset or Bluetooth route behavior is observed when available, without duplicate output
+- [ ] Artifacts and Activity remain usable during and after the session
+- [ ] Computer and Remote Codex UI remain absent on iOS
+- [ ] sanitized console inspection contains no SDP, authorization headers, credentials, keys, transcripts, or raw audio
+- [ ] the temporary bootstrap credential is deleted locally and revoked server-side after proof
+
+Media- or lifecycle-affecting changes after this run invalidate the proof. Rerun the physical checklist on the new head before review or merge.
+
+## Troubleshooting
+
+- **No bootstrap session credential is stored in Keychain:** provision the approved temporary token through the DEBUG-only sheet. Do not add it to `.env.local`.
+- **Unable to reach the Realtime session service:** confirm the HTTPS origin is reachable from the phone and contains no path; then check deployment health.
+- **Session service rejected the request:** verify server-side token approval and exact `capacitor://localhost` CORS without printing the token.
+- **Microphone denied or restricted:** enable Vector under **Settings > Privacy & Security > Microphone** or check managed-device policy. iOS does not reprompt after denial.
+- **No microphone / microphone busy:** disconnect other calls or recording apps, check the current route, and retry manually.
+- **Realtime SDP rejected or timed out:** verify network access and backend-issued credential freshness; never log SDP or the ephemeral credential.
+- **Remote audio unavailable:** check Silent Mode, volume, Control Center output, wired/Bluetooth route, and whether another audio session owns the route.
+- **Headset unplug, interruption, lock, background, or media-service reset:** a safe disconnect is expected. Restore the condition and tap Start for a fresh session.
+- **Device missing from Xcode:** unlock and trust it, enable Developer Mode, reconnect USB or trusted wireless pairing, and wait for Xcode device preparation.
+- **Signing failure:** select an authorized team and allow automatic signing to refresh a development identity/profile. Do not commit team or profile identifiers.
+
+## Verification before PR updates
+
+Run:
+
+```bash
+npm ci
+npm ls --all
+npm test
+npm run typecheck
+npm run build
+npm run server:test
+npm run server:smoke
+npm run ios:sync
+npm run ios:verify
+git diff --check
+```
+
+Also scan tracked changes, generated assets, bundle output, and captured logs for secrets and forbidden artifacts. Release verification must confirm the DEBUG provisioning marker is absent from the compiled Release app. Generated web assets under `ios/App/App/public`, native products, DerivedData, `xcuserdata`, screenshots, and runtime logs remain uncommitted.
+
+## Deferred work
+
+Phase 5 does not add background audio, always-on recording, production accounts, analytics, push notifications, subscriptions, quotas, cloud sync, TestFlight, or App Store submission. Phase 7 customer authentication remains explicitly deferred. The current repository contains no authoritative Phase 6 or Phase 8 contract, so those phases must be scoped separately rather than inferred here.

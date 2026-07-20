@@ -1,6 +1,7 @@
 import type {
   AppLifecycleCapability,
   RealtimeCredential,
+  VoiceSessionCapability,
   VectorArtifact,
   VectorPlatform,
   VectorToolCall,
@@ -11,7 +12,6 @@ import iosToolSpecAllowlist from "../../shared/ios-tool-specs.json";
 
 export type IOSSecureStorageBridge = {
   get: () => Promise<{ value?: unknown }>;
-  set: (options: { value: string }) => Promise<void>;
   delete: () => Promise<void>;
 };
 
@@ -22,6 +22,7 @@ export type IOSVectorPlatformDependencies = {
   timeoutMs?: number;
   appLifecycle?: AppLifecycleCapability;
   openExternalUrl?: (url: string) => Promise<void>;
+  voiceSession?: VoiceSessionCapability;
 };
 
 const sessionPath = "/api/realtime/session";
@@ -48,16 +49,18 @@ export function createIOSVectorPlatform(dependencies: IOSVectorPlatformDependenc
 
   return {
     presentation: "native-mobile",
-    createRealtimeCredential: () =>
+    createRealtimeCredential: (options) =>
       requestRealtimeCredential({
         backendBaseUrl: dependencies.backendBaseUrl,
         secureStorage: dependencies.secureStorage,
         fetchImpl,
         timeoutMs,
+        signal: options?.signal,
       }),
     executeTool: executeIOSTool,
     listToolSpecs: async () => iosToolSpecs.map((spec) => ({ ...spec })),
     ...(dependencies.appLifecycle ? { appLifecycle: dependencies.appLifecycle } : {}),
+    ...(dependencies.voiceSession ? { voiceSession: dependencies.voiceSession } : {}),
     ...(dependencies.openExternalUrl
       ? {
           openExternalUrl: async (url: string) => {
@@ -74,11 +77,17 @@ async function requestRealtimeCredential({
   secureStorage,
   fetchImpl,
   timeoutMs,
-}: Required<Pick<IOSVectorPlatformDependencies, "backendBaseUrl" | "secureStorage" | "fetchImpl" | "timeoutMs">>): Promise<RealtimeCredential> {
+  signal,
+}: Required<Pick<IOSVectorPlatformDependencies, "backendBaseUrl" | "secureStorage" | "fetchImpl" | "timeoutMs">> & {
+  signal?: AbortSignal;
+}): Promise<RealtimeCredential> {
   const endpoint = realtimeSessionEndpoint(backendBaseUrl);
   let bootstrapCredential: string | null = null;
 
   try {
+    if (signal?.aborted) {
+      throw new SafeIOSPlatformError("Realtime session request was cancelled.");
+    }
     let stored: { value?: unknown };
     try {
       stored = await secureStorage.get();
@@ -89,9 +98,15 @@ async function requestRealtimeCredential({
     if (typeof stored.value !== "string" || stored.value.length === 0) {
       throw new SafeIOSPlatformError("No bootstrap session credential is stored in Keychain.");
     }
+    if (signal?.aborted) {
+      throw new SafeIOSPlatformError("Realtime session request was cancelled.");
+    }
     bootstrapCredential = stored.value;
 
     const controller = new AbortController();
+    const cancelRequest = () => controller.abort();
+    if (signal?.aborted) cancelRequest();
+    signal?.addEventListener("abort", cancelRequest, { once: true });
     const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
     try {
       let response: Response;
@@ -128,6 +143,7 @@ async function requestRealtimeCredential({
       return validateCredential(payload);
     } finally {
       globalThis.clearTimeout(timeout);
+      signal?.removeEventListener("abort", cancelRequest);
     }
   } catch (error) {
     if (error instanceof SafeIOSPlatformError) throw error;

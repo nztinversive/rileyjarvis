@@ -8,6 +8,8 @@ export type {
   RemoteCodexCapability,
   RemoteCodexLifecycleEvent,
   RemoteCodexTask,
+  VoiceSessionCapability,
+  VoiceSessionEvent,
   VectorArtifact,
   VectorPlatform,
   VectorPresentation,

@@ -108,6 +108,20 @@ test("Realtime connection failures remain in an explicit error state until retry
   assert.equal(moods.at(-1), "idle");
 });
 
+test("native lifecycle and audio events disconnect without automatic microphone reacquisition", () => {
+  const app = read("src/App.tsx");
+
+  assert.match(app, /vectorPlatform\.appLifecycle\.subscribe/);
+  assert.match(app, /vectorPlatform\.voiceSession\.subscribe/);
+  assert.match(app, /if \(event\.shouldDisconnect && clientRef\.current\)/);
+  assert.match(app, /clientRef\.current\.disconnect\(\)/);
+  assert.match(app, /clientRef\.current = null/);
+  assert.doesNotMatch(
+    app.slice(app.indexOf("vectorPlatform.voiceSession.subscribe"), app.indexOf("function toggleTheme")),
+    /client\.connect\(|\bconnect\(\)/,
+  );
+});
+
 test("native presentation selection is capability-driven and desktop-only modes stay out of mobile UI", () => {
   const app = read("src/App.tsx");
   const mobile = read("src/components/MobileAppShell.tsx");

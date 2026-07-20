@@ -15,8 +15,8 @@ test("the native Keychain plugin is narrow, device-only, and registered with Cap
 
   assert.match(plugin, /CAPPlugin, CAPBridgedPlugin/);
   assert.match(plugin, /CAPPluginMethod\(name: "get"/);
-  assert.match(plugin, /CAPPluginMethod\(name: "set"/);
   assert.match(plugin, /CAPPluginMethod\(name: "delete"/);
+  assert.doesNotMatch(plugin, /CAPPluginMethod\(name: "set"/);
   assert.match(plugin, /kSecAttrAccessibleWhenUnlockedThisDeviceOnly/);
   assert.match(plugin, /SecItemCopyMatching/);
   assert.match(plugin, /SecItemUpdate/);
@@ -28,8 +28,8 @@ test("the native Keychain plugin is narrow, device-only, and registered with Cap
   assert.match(project, /VectorSecureStoragePlugin\.swift in Sources/);
   assert.match(project, /VectorBridgeViewController\.swift in Sources/);
   assert.match(adapter, /secureStorage\.get/);
-  assert.match(bridge, /secureStorage\.set/);
   assert.match(bridge, /secureStorage\.delete/);
+  assert.doesNotMatch(bridge, /secureStorage\.set/);
   assert.match(bridge, /App\.addListener\("pause"/);
   assert.match(bridge, /App\.addListener\("resume"/);
   assert.doesNotMatch(bridge, /appStateChange/);
@@ -52,6 +52,72 @@ test("the iOS project declares microphone purpose, secure defaults, and no backg
   assert.match(config, /iosScheme: "capacitor"/);
   assert.doesNotMatch(config, /allowNavigation|cleartext:\s*true/);
   assert.match(vite, /target: "safari15"/);
+});
+
+test("the native audio session plugin prepares voice chat and reports sanitized lifecycle events", () => {
+  const plugin = read("ios/App/App/VectorAudioSessionPlugin.swift");
+  const controller = read("ios/App/App/VectorBridgeViewController.swift");
+  const project = read("ios/App/App.xcodeproj/project.pbxproj");
+
+  assert.match(plugin, /jsName = "VectorAudioSession"/);
+  assert.match(plugin, /CAPPluginMethod\(name: "prepare"/);
+  assert.match(plugin, /CAPPluginMethod\(name: "deactivate"/);
+  assert.match(plugin, /AVAudioApplication\.requestRecordPermission/);
+  assert.match(plugin, /audioSession\.requestRecordPermission/);
+  assert.match(plugin, /\.playAndRecord/);
+  assert.match(plugin, /mode: \.voiceChat/);
+  assert.match(plugin, /\.allowBluetooth/);
+  assert.match(plugin, /\.defaultToSpeaker/);
+  assert.match(plugin, /setActive\(false, options: \.notifyOthersOnDeactivation\)/);
+  assert.match(plugin, /AVAudioSession\.interruptionNotification/);
+  assert.match(plugin, /AVAudioSession\.routeChangeNotification/);
+  assert.match(plugin, /AVAudioSession\.mediaServicesWereResetNotification/);
+  assert.match(plugin, /protectedDataWillBecomeUnavailableNotification/);
+  assert.match(plugin, /UIApplication\.didEnterBackgroundNotification/);
+  assert.match(plugin, /preparationGeneration/);
+  assert.match(plugin, /AUDIO_SESSION_PREPARE_CANCELLED/);
+  assert.match(plugin, /generation == self\.preparationGeneration/);
+  assert.match(plugin, /"stateChanged"/);
+  assert.match(plugin, /"route-unavailable"/);
+  assert.match(plugin, /"media-services-reset"/);
+  assert.match(plugin, /"protected-data-unavailable"/);
+  assert.doesNotMatch(plugin, /portName|print\(|CAPLog|NSLog/);
+  assert.match(controller, /registerPluginInstance\(VectorAudioSessionPlugin\(\)\)/);
+  assert.match(project, /VectorAudioSessionPlugin\.swift in Sources/);
+});
+
+test("WKWebView grants only trusted main-frame microphone capture", () => {
+  const delegate = read("ios/App/App/VectorWebViewUIDelegate.swift");
+  const controller = read("ios/App/App/VectorBridgeViewController.swift");
+  const project = read("ios/App/App.xcodeproj/project.pbxproj");
+
+  assert.match(delegate, /frame\.isMainFrame/);
+  assert.match(delegate, /origin\.protocol == "capacitor"/);
+  assert.match(delegate, /origin\.host == "localhost"/);
+  assert.match(delegate, /type == \.microphone/);
+  assert.match(delegate, /\? \.grant : \.deny/);
+  assert.match(delegate, /forwardingTarget/);
+  assert.match(controller, /VectorWebViewUIDelegate\(forwarding: webView\.uiDelegate\)/);
+  assert.match(project, /VectorWebViewUIDelegate\.swift in Sources/);
+});
+
+test("temporary credential provisioning is launch-gated, DEBUG-only, and device-only", () => {
+  const provisioner = read("ios/App/App/VectorDebugCredentialProvisioner.swift");
+  const storage = read("ios/App/App/VectorSecureStoragePlugin.swift");
+  const controller = read("ios/App/App/VectorBridgeViewController.swift");
+  const project = read("ios/App/App.xcodeproj/project.pbxproj");
+
+  assert.match(provisioner, /^#if DEBUG/);
+  assert.match(provisioner, /-VectorEnableCredentialProvisioning/);
+  assert.match(provisioner, /isSecureTextEntry = true/);
+  assert.match(provisioner, /VectorSecureCredentialStore\.write\(credential\)/);
+  assert.match(provisioner, /VectorSecureCredentialStore\.delete\(\)/);
+  assert.doesNotMatch(provisioner, /UserDefaults|Preferences|localStorage|print\(|CAPLog|NSLog/);
+  assert.match(storage, /kSecAttrAccessibleWhenUnlockedThisDeviceOnly/);
+  assert.match(storage, /#if DEBUG\s+static func write/s);
+  assert.doesNotMatch(storage, /CAPPluginMethod\(name: "set"/);
+  assert.match(controller, /#if DEBUG\s+VectorDebugCredentialProvisioner\.presentIfEnabled/s);
+  assert.match(project, /VectorDebugCredentialProvisioner\.swift in Sources/);
 });
 
 function read(relativePath) {

@@ -83,6 +83,31 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!vectorPlatform?.voiceSession) return;
+    return vectorPlatform.voiceSession.subscribe((event) => {
+      if (event.shouldDisconnect && clientRef.current) {
+        clientRef.current.disconnect();
+        clientRef.current = null;
+        const message = voiceSessionDisconnectMessage(event.type);
+        setStatus(message);
+        setTranscript((items) => [newEntry("system", message), ...items].slice(0, 80));
+        return;
+      }
+      if (event.type === "route-changed" && event.route && clientRef.current) {
+        setStatus(`Audio route changed: ${event.route}.`);
+      }
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      clientRef.current?.disconnect();
+      clientRef.current = null;
+    },
+    [],
+  );
+
   function toggleTheme() {
     setTheme((current) => {
       const next = current === "day" ? "night" : "day";
@@ -481,6 +506,23 @@ export default function App() {
       />
     </main>
   );
+}
+
+function voiceSessionDisconnectMessage(
+  type: "interruption" | "route-unavailable" | "media-services-reset" | "protected-data-unavailable" | "route-changed",
+): string {
+  switch (type) {
+    case "interruption":
+      return "Voice stopped for an audio interruption. Tap Start conversation when you are ready.";
+    case "route-unavailable":
+      return "Voice stopped because the active audio route became unavailable. Check your output, then reconnect.";
+    case "media-services-reset":
+      return "Voice stopped because iOS reset its audio service. Tap Start conversation to create a fresh session.";
+    case "protected-data-unavailable":
+      return "Voice stopped while the device was locked. Unlock, then reconnect.";
+    case "route-changed":
+      return "Voice stopped after an audio route change. Check your output, then reconnect.";
+  }
 }
 
 function playTone(freqStart: number, freqEnd: number, duration: number, volume: number, type: OscillatorType = "sine") {
