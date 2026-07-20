@@ -511,9 +511,11 @@ public final class VectorMobileDataStore: @unchecked Sendable {
         try prepareDirectory()
         let data = try encoder.encode(sorted(document))
         guard data.count <= Self.maxFileBytes else { throw VectorMobileDataError.storageLimit }
-        try data.write(to: storeURL, options: [.atomic])
 #if os(iOS)
+        try data.write(to: storeURL, options: [.atomic, .completeFileProtection])
         try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: storeURL.path)
+#else
+        try data.write(to: storeURL, options: [.atomic])
 #endif
         loaded = document
     }

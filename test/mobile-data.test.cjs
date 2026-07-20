@@ -125,7 +125,7 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.match(plugin, /CAPPluginMethod\(name: "searchRecords"/);
   assert.match(plugin, /searchRecords\([\s\S]*?snapshot\(\)\.recoveredCorruptStore[\s\S]*?corruptStorePreserved/);
   assert.match(core, /DispatchQueue\(label: "com\.rileyjarvis\.vector\.mobile-data"\)/);
-  assert.match(core, /options: \[\.atomic\]/);
+  assert.match(core, /options: \[\.atomic, \.completeFileProtection\]/);
   assert.match(core, /FileProtectionType\.complete/);
   assert.match(core, /corrupt-/);
   assert.match(core, /maxFileBytes/);
