@@ -169,6 +169,24 @@ test("production configuration rejects missing or weak secrets and wildcard CORS
   );
 });
 
+test("configured CORS origins are canonical and origin-only", () => {
+  const base = {
+    NODE_ENV: "production",
+    OPENAI_API_KEY: "configured",
+    VECTOR_SAFETY_ID_SECRET: "configured-safety-secret-at-least-32-characters",
+    VECTOR_AUTH_TOKENS_JSON: JSON.stringify({ subject: AUTH_TOKEN }),
+  };
+  const config = loadConfig({
+    ...base,
+    VECTOR_ALLOWED_ORIGINS: "HTTPS://Example.COM:443,capacitor://LOCALHOST/",
+  });
+  assert.deepEqual([...config.allowedOrigins], ["https://example.com", "capacitor://localhost"]);
+
+  for (const origin of ["https://example.com/path", "https://user@example.com", "https://example.com?query=1", "file://local"]) {
+    assert.throws(() => loadConfig({ ...base, VECTOR_ALLOWED_ORIGINS: origin }), /origin/i);
+  }
+});
+
 test("successful minting returns only the VectorPlatform credential fields", async () => {
   await withServer({ config: testConfig(), fetchFn: successfulUpstream() }, async (baseUrl) => {
     const response = await sessionRequest(baseUrl);

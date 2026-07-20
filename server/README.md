@@ -7,7 +7,7 @@ This service is the Phase 2 trust boundary for future native clients. It keeps t
 - `GET /health` returns a secret-free readiness response.
 - `POST /api/realtime/session` requires `Authorization: Bearer <bootstrap-token>`, `Content-Type: application/json`, and an empty `{}` body. The authenticated token maps to a server-owned opaque subject; clients cannot choose their subject or Realtime session configuration.
 
-Native clients that do not send an `Origin` header are accepted. Browser or Capacitor origins must be listed exactly in `VECTOR_ALLOWED_ORIGINS`; wildcards are rejected. A typical local list is `http://127.0.0.1:5173,capacitor://localhost`.
+Native clients that do not send an `Origin` header are accepted. Browser or Capacitor origins must be listed in `VECTOR_ALLOWED_ORIGINS`; values are canonicalized to origin-only scheme/host forms, while paths, credentials, query strings, fragments, unsupported schemes, and wildcards are rejected. A typical local list is `http://127.0.0.1:5173,capacitor://localhost`.
 
 ## Configuration and startup
 

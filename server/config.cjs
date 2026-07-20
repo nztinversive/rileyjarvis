@@ -102,18 +102,30 @@ function parseOrigins(raw) {
     if (origin === "*") {
       throw new ConfigurationError("wildcard_origin", "VECTOR_ALLOWED_ORIGINS cannot contain a wildcard.");
     }
-    let parsed;
-    try {
-      parsed = new URL(origin);
-    } catch {
-      throw new ConfigurationError("invalid_origin", "VECTOR_ALLOWED_ORIGINS contains an invalid origin.");
-    }
-    if (parsed.origin === "null" && !/^(capacitor|ionic):\/\//i.test(origin)) {
-      throw new ConfigurationError("invalid_origin", "VECTOR_ALLOWED_ORIGINS contains an unsupported origin.");
-    }
-    origins.add(origin.replace(/\/$/, ""));
+    origins.add(canonicalizeOrigin(origin));
   }
   return origins;
+}
+
+function canonicalizeOrigin(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new ConfigurationError("invalid_origin", "VECTOR_ALLOWED_ORIGINS contains an invalid origin.");
+  }
+
+  const hasNonOriginParts =
+    Boolean(parsed.username || parsed.password || parsed.search || parsed.hash) || !["", "/"].includes(parsed.pathname);
+  if (hasNonOriginParts) {
+    throw new ConfigurationError("invalid_origin", "VECTOR_ALLOWED_ORIGINS entries must contain only a scheme and host.");
+  }
+
+  if (["http:", "https:"].includes(parsed.protocol)) return parsed.origin;
+  if (["capacitor:", "ionic:"].includes(parsed.protocol) && parsed.host) {
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}`;
+  }
+  throw new ConfigurationError("invalid_origin", "VECTOR_ALLOWED_ORIGINS contains an unsupported origin.");
 }
 
 function requiredSecret(value, name, minimumLength = 1) {
