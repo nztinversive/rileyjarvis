@@ -123,6 +123,7 @@ test("native contracts use Application Support, serialization, atomic protection
   assert.match(plugin, /mutationResult\(itemId: record\.id\)/);
   assert.match(plugin, /mutationResult\(itemId: artifact\.id\)/);
   assert.match(plugin, /CAPPluginMethod\(name: "searchRecords"/);
+  assert.match(plugin, /searchRecords\([\s\S]*?snapshot\(\)\.recoveredCorruptStore[\s\S]*?corruptStorePreserved/);
   assert.match(core, /DispatchQueue\(label: "com\.rileyjarvis\.vector\.mobile-data"\)/);
   assert.match(core, /options: \[\.atomic\]/);
   assert.match(core, /FileProtectionType\.complete/);

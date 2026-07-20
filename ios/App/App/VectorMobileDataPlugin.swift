@@ -176,6 +176,9 @@ public final class VectorMobileDataPlugin: CAPPlugin, CAPBridgedPlugin {
                 query: call.getString("query") ?? "",
                 limit: min(max(call.getInt("limit") ?? 20, 1), 100)
             )
+            if let recovery = try self.store.snapshot().recoveredCorruptStore {
+                throw VectorMobileDataError.corruptStorePreserved(recovery)
+            }
             call.resolve(["records": try self.recordValues(records)])
         }
     }
