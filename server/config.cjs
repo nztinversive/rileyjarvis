@@ -83,6 +83,9 @@ function parseAuthTokens(raw) {
     if (token.length < 32) {
       throw new ConfigurationError("weak_auth_token", "Bootstrap bearer tokens must contain at least 32 characters.");
     }
+    if (isPlaceholderSecret(token)) {
+      throw new ConfigurationError("placeholder_auth_token", "Bootstrap bearer token placeholders must be replaced.");
+    }
     if (seenTokens.has(token)) {
       throw new ConfigurationError("duplicate_auth_token", "Bootstrap bearer tokens must be unique per subject.");
     }
@@ -121,7 +124,14 @@ function requiredSecret(value, name, minimumLength = 1) {
   if (secret.length < minimumLength) {
     throw new ConfigurationError(`weak_${name.toLowerCase()}`, `${name} must contain at least ${minimumLength} characters.`);
   }
+  if (isPlaceholderSecret(secret)) {
+    throw new ConfigurationError(`placeholder_${name.toLowerCase()}`, `${name} placeholder must be replaced.`);
+  }
   return secret;
+}
+
+function isPlaceholderSecret(value) {
+  return /^(?:your[_-].*[_-]here|replace-with-|change-me)/i.test(value);
 }
 
 function integerInRange(value, fallback, minimum, maximum, name) {

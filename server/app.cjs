@@ -154,12 +154,15 @@ function readJsonBody(request, maximumBytes) {
     }
 
     let size = 0;
+    let tooLarge = false;
     const chunks = [];
     request.on("data", (chunk) => {
+      if (tooLarge) return;
       size += chunk.length;
       if (size > maximumBytes) {
+        tooLarge = true;
+        chunks.length = 0;
         reject(requestError("request_too_large"));
-        request.destroy();
         return;
       }
       chunks.push(chunk);

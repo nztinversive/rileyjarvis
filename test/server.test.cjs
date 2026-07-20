@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
+const http = require("node:http");
 const test = require("node:test");
 const { createVectorRealtimeServer } = require("../server/app.cjs");
 const { loadConfig } = require("../server/config.cjs");
@@ -69,6 +70,34 @@ function successfulUpstream(inspect = () => {}) {
   };
 }
 
+function sendChunkedOversizedRequest(baseUrl) {
+  const url = new URL("/api/realtime/session", baseUrl);
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AUTH_TOKEN}`,
+          "Content-Type": "application/json",
+          "Transfer-Encoding": "chunked",
+        },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString("utf8") }));
+      },
+    );
+    request.on("error", reject);
+    request.write('{"padding":"');
+    request.write("x".repeat(200));
+    request.end('"}');
+  });
+}
+
 test("health is secret-free and rejects unsupported methods", async () => {
   await withServer({ config: testConfig(), fetchFn: successfulUpstream() }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/health`);
@@ -117,6 +146,26 @@ test("production configuration rejects missing or weak secrets and wildcard CORS
         VECTOR_ALLOWED_ORIGINS: "*",
       }),
     /cannot contain a wildcard/,
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        NODE_ENV: "production",
+        OPENAI_API_KEY: "configured",
+        VECTOR_SAFETY_ID_SECRET: "configured-safety-secret-at-least-32-characters",
+        VECTOR_AUTH_TOKENS_JSON: JSON.stringify({ subject: "replace-with-at-least-32-random-characters" }),
+      }),
+    /placeholders must be replaced/,
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        NODE_ENV: "production",
+        OPENAI_API_KEY: "your_openai_api_key_here",
+        VECTOR_SAFETY_ID_SECRET: "configured-safety-secret-at-least-32-characters",
+        VECTOR_AUTH_TOKENS_JSON: JSON.stringify({ subject: AUTH_TOKEN }),
+      }),
+    /OPENAI_API_KEY placeholder must be replaced/,
   );
 });
 
@@ -175,7 +224,7 @@ test("safety identifiers are stable, keyed, and privacy-preserving", async () =>
   assert.notEqual(alpha, createSafetyIdentifier("subject-beta", secret));
   assert.notEqual(alpha, createSafetyIdentifier("subject-alpha", `${secret}-different`));
   assert.equal(alpha.includes("subject-alpha"), false);
-  assert.match(alpha, /^vector_[a-f0-9]{64}$/);
+  assert.match(alpha, /^[a-f0-9]{64}$/);
 
   const identifiers = [];
   await withServer(
@@ -268,6 +317,9 @@ test("request method, content type, JSON, schema, and size are validated", async
     assert.equal((await sessionRequest(baseUrl, { body: "{" })).status, 400);
     assert.equal((await sessionRequest(baseUrl, { body: JSON.stringify({ model: "client-override" }) })).status, 400);
     assert.equal((await sessionRequest(baseUrl, { body: JSON.stringify({ padding: "x".repeat(200) }) })).status, 413);
+    const chunked = await sendChunkedOversizedRequest(baseUrl);
+    assert.equal(chunked.status, 413);
+    assert.equal(JSON.parse(chunked.body).error.code, "request_too_large");
   });
 });
 

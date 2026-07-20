@@ -20,7 +20,7 @@ const server = createVectorRealtimeServer({
   config,
   fetchFn: async (_url, options) => {
     assert.equal(options.method, "POST");
-    assert.ok(options.headers["OpenAI-Safety-Identifier"].startsWith("vector_"));
+    assert.match(options.headers["OpenAI-Safety-Identifier"], /^[a-f0-9]{64}$/);
     return new Response(JSON.stringify({ value: "ek_test_smoke", expires_at: 2_000_000_000 }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
